@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="PieceType" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/piece_type.gd" id="1_pt"]
+
+[resource]
+script = ExtResource("1_pt")
+kind = 2
+display_name = "Staff"
+color = Color(0.66, 0.36, 0.85, 1)
+sprite_path = ""
+level_values = Array[int]([3, 5, 7])
+level_secondary = Array[int]([5, 5, 5])
+combo_bonus_pct = Array[int]([60, 75, 100])
+combo_bonus_step_pct = 20

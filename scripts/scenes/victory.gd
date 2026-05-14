@@ -1,0 +1,10 @@
+extends Control
+
+@onready var _continue: Button = $Center/VBox/Continue
+@onready var _label: Label = $Center/VBox/Label
+@onready var _detail: Label = $Center/VBox/Detail
+
+func _ready() -> void:
+	_continue.pressed.connect(SceneRouter.goto_chapter_map)
+	_label.text = "Castle Conquered"
+	_detail.text = "%s falls. You ride to the next stronghold." % GameState.current_castle.castle_name

@@ -1,0 +1,59 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/ui/tutorial_overlay.gd" id="1_tut"]
+
+[node name="TutorialOverlay" type="Control"]
+anchor_right = 1.0
+anchor_bottom = 1.0
+script = ExtResource("1_tut")
+
+[node name="Dim" type="ColorRect" parent="."]
+anchor_right = 1.0
+anchor_bottom = 1.0
+color = Color(0, 0, 0, 0.7)
+
+[node name="Center" type="CenterContainer" parent="."]
+anchor_right = 1.0
+anchor_bottom = 1.0
+
+[node name="Panel" type="PanelContainer" parent="Center"]
+custom_minimum_size = Vector2(720, 0)
+
+[node name="VBox" type="VBoxContainer" parent="Center/Panel"]
+theme_override_constants/separation = 16
+
+[node name="Margin" type="MarginContainer" parent="Center/Panel/VBox"]
+theme_override_constants/margin_left = 28
+theme_override_constants/margin_right = 28
+theme_override_constants/margin_top = 24
+theme_override_constants/margin_bottom = 24
+
+[node name="Title" type="Label" parent="Center/Panel/VBox/Margin"]
+horizontal_alignment = 1
+text = "How to fight"
+theme_override_font_sizes/font_size = 36
+theme_override_colors/font_color = Color(0.95, 0.82, 0.42, 1)
+
+[node name="Body" type="Label" parent="Center/Panel/VBox"]
+autowrap_mode = 3
+horizontal_alignment = 1
+text = "Swap adjacent pieces to make matches of 3+.
+
+Every match drops an emblem into your action scale.
+When the scale fills (5 emblems), your hero acts:
+all 5 emblems resolve together, then the enemy attacks.
+
+Match-4 = stronger emblem (level 2)
+Match-5 = strongest emblem (level 3)
+
+3+ same-level emblems trigger a combo bonus."
+theme_override_font_sizes/font_size = 20
+theme_override_colors/font_color = Color(0.85, 0.78, 0.62, 1)
+
+[node name="Spacer" type="Control" parent="Center/Panel/VBox"]
+custom_minimum_size = Vector2(0, 12)
+
+[node name="Continue" type="Button" parent="Center/Panel/VBox"]
+custom_minimum_size = Vector2(0, 70)
+text = "Begin"
+theme_override_font_sizes/font_size = 28

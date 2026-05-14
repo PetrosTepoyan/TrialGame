@@ -1,0 +1,78 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/scenes/main_menu.gd" id="1_mm"]
+[ext_resource type="PackedScene" path="res://scenes/ui/settings_panel.tscn" id="2_sp"]
+
+[node name="MainMenu" type="Control"]
+anchor_right = 1.0
+anchor_bottom = 1.0
+script = ExtResource("1_mm")
+
+[node name="Background" type="ColorRect" parent="."]
+anchor_right = 1.0
+anchor_bottom = 1.0
+color = Color(0.07, 0.05, 0.09, 1)
+
+[node name="Vignette" type="ColorRect" parent="."]
+anchor_right = 1.0
+anchor_bottom = 1.0
+color = Color(0.18, 0.08, 0.10, 0.18)
+
+[node name="Center" type="CenterContainer" parent="."]
+anchor_right = 1.0
+anchor_bottom = 1.0
+
+[node name="VBox" type="VBoxContainer" parent="Center"]
+custom_minimum_size = Vector2(700, 0)
+theme_override_constants/separation = 20
+
+[node name="Title" type="Label" parent="Center/VBox"]
+horizontal_alignment = 1
+text = "Three Towers"
+theme_override_font_sizes/font_size = 84
+theme_override_colors/font_color = Color(0.95, 0.82, 0.42, 1)
+
+[node name="Subtitle" type="Label" parent="Center/VBox"]
+horizontal_alignment = 1
+text = "A medieval match-3 war"
+theme_override_font_sizes/font_size = 28
+theme_override_colors/font_color = Color(0.85, 0.78, 0.62, 1)
+
+[node name="Spacer1" type="Control" parent="Center/VBox"]
+custom_minimum_size = Vector2(0, 30)
+
+[node name="PlayButton" type="Button" parent="Center/VBox"]
+custom_minimum_size = Vector2(0, 80)
+text = "Play"
+theme_override_font_sizes/font_size = 36
+
+[node name="ResetButton" type="Button" parent="Center/VBox"]
+custom_minimum_size = Vector2(0, 60)
+text = "Reset Save"
+theme_override_font_sizes/font_size = 24
+
+[node name="SettingsButton" type="Button" parent="Center/VBox"]
+custom_minimum_size = Vector2(0, 60)
+text = "Settings"
+theme_override_font_sizes/font_size = 24
+
+[node name="QuitButton" type="Button" parent="Center/VBox"]
+custom_minimum_size = Vector2(0, 60)
+text = "Quit"
+theme_override_font_sizes/font_size = 24
+
+[node name="SettingsPanel" parent="." instance=ExtResource("2_sp")]
+visible = false
+
+[node name="Credits" type="Label" parent="."]
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 24.0
+offset_top = -60.0
+offset_right = -24.0
+offset_bottom = -20.0
+horizontal_alignment = 1
+text = "Art: Kenney.nl (CC0)  •  Music: Kevin MacLeod / incompetech.com (CC-BY)"
+theme_override_font_sizes/font_size = 14
+theme_override_colors/font_color = Color(0.7, 0.7, 0.7, 0.85)

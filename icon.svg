@@ -1,0 +1,19 @@
+<svg width="128" height="128" viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg">
+  <rect width="128" height="128" fill="#1a0f1f"/>
+  <!-- Three towers silhouette -->
+  <rect x="16" y="56" width="22" height="56" fill="#c89b3c"/>
+  <rect x="53" y="36" width="22" height="76" fill="#e0b04a"/>
+  <rect x="90" y="56" width="22" height="56" fill="#c89b3c"/>
+  <!-- Crenellations -->
+  <rect x="16" y="48" width="6" height="8" fill="#c89b3c"/>
+  <rect x="26" y="48" width="6" height="8" fill="#c89b3c"/>
+  <rect x="32" y="48" width="6" height="8" fill="#c89b3c"/>
+  <rect x="53" y="28" width="6" height="8" fill="#e0b04a"/>
+  <rect x="63" y="28" width="6" height="8" fill="#e0b04a"/>
+  <rect x="69" y="28" width="6" height="8" fill="#e0b04a"/>
+  <rect x="90" y="48" width="6" height="8" fill="#c89b3c"/>
+  <rect x="100" y="48" width="6" height="8" fill="#c89b3c"/>
+  <rect x="106" y="48" width="6" height="8" fill="#c89b3c"/>
+  <!-- Banner on central tower -->
+  <polygon points="59,40 69,40 64,52" fill="#a83232"/>
+</svg>
