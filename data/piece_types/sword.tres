@@ -4,10 +4,11 @@
 
 [resource]
 script = ExtResource("1_pt")
-kind = 2
-display_name = "Spear"
-color = Color(0.85, 0.32, 0.32, 1)
-base_value = 5
-match4_multiplier = 2.0
-match5_multiplier = 3.0
+kind = 0
+display_name = "Sword"
+color = Color(0.95, 0.78, 0.30, 1)
 sprite_path = ""
+level_values = Array[int]([10, 12, 15])
+level_secondary = Array[int]([0, 0, 0])
+combo_bonus_pct = Array[int]([60, 75, 100])
+combo_bonus_step_pct = 20

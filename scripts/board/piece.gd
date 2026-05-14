@@ -11,7 +11,6 @@ var kind: int = 0
 var color: Color = Color.WHITE
 var board_pos: Vector2i = Vector2i.ZERO
 var is_selected: bool = false
-var is_input_blocked: bool = false
 
 var _tween: Tween
 
@@ -50,54 +49,44 @@ func _kill_tween() -> void:
 	if _tween != null and _tween.is_running():
 		_tween.kill()
 
-func _input(event: InputEvent) -> void:
-	pass
-
 func _draw() -> void:
 	var half: float = SIZE * 0.5
 	var rect := Rect2(-half, -half, SIZE, SIZE)
 	# Tile background
-	var bg := Color(0.16, 0.13, 0.20)
-	draw_rect(rect, bg, true)
+	draw_rect(rect, Color(0.16, 0.13, 0.20), true)
 	# Colored inset
-	var inset_rect := rect.grow(-6)
-	draw_rect(inset_rect, color, true)
+	draw_rect(rect.grow(-6), color, true)
 	# Border
-	var border: Color
-	if is_selected:
-		border = Color(1, 0.95, 0.5, 0.95)
-	elif PieceType.is_powerup(kind):
-		border = Color(1.0, 0.85, 0.35, 0.90)  # glowing gold border for power-ups
-	else:
-		border = Color(1, 1, 1, 0.18)
-	var border_width: float = 4.0 if PieceType.is_powerup(kind) else 3.0
-	draw_rect(rect.grow(-1), border, false, border_width)
+	var border := Color(1, 0.95, 0.5, 0.95) if is_selected else Color(1, 1, 1, 0.18)
+	draw_rect(rect.grow(-1), border, false, 3.0)
 	# Icon for kind
 	_draw_kind_icon()
 
 func _draw_kind_icon() -> void:
-	var center := Vector2.ZERO
 	var r: float = SIZE * 0.28
 	var icon_color := Color(1, 1, 1, 0.92)
 	match kind:
-		PieceType.Kind.KING:
-			# Crown: trapezoid + 3 spikes
-			var w: float = SIZE * 0.42
-			var h: float = SIZE * 0.18
-			var top_y: float = -h * 0.5
-			var bot_y: float = h * 0.5
-			var pts := PackedVector2Array([
-				Vector2(-w * 0.5, bot_y),
-				Vector2(w * 0.5, bot_y),
-				Vector2(w * 0.42, top_y),
-				Vector2(w * 0.18, bot_y - 4),
-				Vector2(0, top_y),
-				Vector2(-w * 0.18, bot_y - 4),
-				Vector2(-w * 0.42, top_y),
+		PieceType.Kind.SWORD:
+			# Vertical sword: blade pointing up, hilt at bottom.
+			var blade_color := Color(0.96, 0.96, 1.00, 1)
+			var hilt_color := Color(0.55, 0.40, 0.20, 1)
+			var pommel := Color(0.95, 0.78, 0.30, 1)
+			# Blade
+			draw_line(Vector2(0, -r * 1.05), Vector2(0, r * 0.35), blade_color, 6.0, true)
+			# Blade tip triangle
+			var tip := PackedVector2Array([
+				Vector2(-5, -r * 1.0),
+				Vector2(0, -r * 1.25),
+				Vector2(5, -r * 1.0),
 			])
-			draw_colored_polygon(pts, icon_color)
+			draw_colored_polygon(tip, blade_color)
+			# Crossguard
+			draw_line(Vector2(-r * 0.55, r * 0.35), Vector2(r * 0.55, r * 0.35), pommel, 6.0, true)
+			# Grip
+			draw_line(Vector2(0, r * 0.40), Vector2(0, r * 0.80), hilt_color, 6.0, true)
+			# Pommel
+			draw_circle(Vector2(0, r * 0.85), 5.0, pommel)
 		PieceType.Kind.SHIELD:
-			# Shield: rounded pentagon-ish
 			var w: float = SIZE * 0.34
 			var h: float = SIZE * 0.40
 			var pts := PackedVector2Array([
@@ -111,23 +100,25 @@ func _draw_kind_icon() -> void:
 			# Cross
 			draw_rect(Rect2(-w * 0.06, -h * 0.30, w * 0.12, h * 0.55), Color(0, 0, 0, 0.35), true)
 			draw_rect(Rect2(-w * 0.24, -h * 0.10, w * 0.48, h * 0.12), Color(0, 0, 0, 0.35), true)
-		PieceType.Kind.SPEAR:
-			# Spear: diagonal shaft + tip + tail
-			var p_from := Vector2(-r, r)
-			var p_to := Vector2(r, -r)
-			draw_line(p_from, p_to, icon_color, 4.0, true)
-			# Tip triangle
-			var tip := PackedVector2Array([
-				Vector2(r - 6, -r + 2),
-				Vector2(r + 8, -r - 8),
-				Vector2(r + 2, -r + 6),
-			])
-			draw_colored_polygon(tip, icon_color)
-			# Crossguard
-			draw_line(Vector2(-r * 0.2, -r * 0.2 - 6), Vector2(-r * 0.2 + 12, -r * 0.2 + 6), icon_color, 3.0, true)
-		PieceType.Kind.ARCHER:
+		PieceType.Kind.STAFF:
+			# Magic staff: vertical shaft + orb at top
+			var shaft_color := Color(0.60, 0.42, 0.25, 1)
+			var orb_color := Color(0.85, 0.55, 1.00, 1)
+			# Shaft
+			draw_line(Vector2(0, r * 1.0), Vector2(0, -r * 0.55), shaft_color, 5.0, true)
+			# Wrapped grip
+			draw_line(Vector2(0, r * 0.45), Vector2(0, r * 0.85), shaft_color.darkened(0.3), 6.0, true)
+			# Orb at top
+			draw_circle(Vector2(0, -r * 0.75), 11.0, orb_color)
+			draw_circle(Vector2(0, -r * 0.75), 7.0, orb_color.lightened(0.4))
+			draw_circle(Vector2(-3, -r * 0.78), 3.0, Color.WHITE)
+			# Sparkles
+			draw_circle(Vector2(r * 0.55, -r * 0.45), 2.5, Color(1, 1, 1, 0.8))
+			draw_circle(Vector2(-r * 0.50, -r * 0.30), 2.0, Color(1, 1, 1, 0.6))
+			draw_circle(Vector2(r * 0.30, -r * 0.95), 2.0, Color(1, 1, 1, 0.6))
+		PieceType.Kind.BOW:
 			# Bow: arc + arrow
-			draw_arc(center, r, deg_to_rad(-70), deg_to_rad(70), 24, icon_color, 4.0, true)
+			draw_arc(Vector2.ZERO, r, deg_to_rad(-70), deg_to_rad(70), 24, icon_color, 4.0, true)
 			# String
 			draw_line(Vector2(r * 0.34, -r * 0.94), Vector2(r * 0.34, r * 0.94), icon_color, 2.0, true)
 			# Arrow
@@ -139,27 +130,6 @@ func _draw_kind_icon() -> void:
 				Vector2(r * 0.4, 4),
 			])
 			draw_colored_polygon(ah, icon_color)
-		PieceType.Kind.BOMB:
-			# Bomb body
-			var body_r: float = SIZE * 0.30
-			draw_circle(center + Vector2(0, 4), body_r, Color(0.10, 0.10, 0.12, 1))
-			draw_circle(center + Vector2(-body_r * 0.35, -body_r * 0.35), body_r * 0.18, Color(0.45, 0.45, 0.50, 1))
-			# Fuse
-			draw_line(Vector2(body_r * 0.55, -body_r * 0.55), Vector2(body_r * 0.95, -body_r * 0.95), Color(0.85, 0.70, 0.40, 1), 3.0, true)
-			# Spark
-			draw_circle(Vector2(body_r * 1.0, -body_r * 1.0), 5.0, Color(1.0, 0.85, 0.30, 1))
-			draw_circle(Vector2(body_r * 1.0, -body_r * 1.0), 2.5, Color(1.0, 1.0, 0.85, 1))
-		PieceType.Kind.CROSSED_SWORDS:
-			# Two swords crossed in an X
-			var arm: float = SIZE * 0.38
-			var blade_color := Color(0.92, 0.92, 0.98, 1)
-			var hilt_color := Color(0.55, 0.40, 0.20, 1)
-			# Sword 1: top-left to bottom-right
-			draw_line(Vector2(-arm * 0.85, -arm * 0.85), Vector2(arm * 0.85, arm * 0.85), blade_color, 5.0, true)
-			# Sword 2: top-right to bottom-left
-			draw_line(Vector2(arm * 0.85, -arm * 0.85), Vector2(-arm * 0.85, arm * 0.85), blade_color, 5.0, true)
-			# Hilts at corners
-			draw_line(Vector2(-arm * 0.95, -arm * 0.55), Vector2(-arm * 0.55, -arm * 0.95), hilt_color, 4.0, true)
-			draw_line(Vector2(arm * 0.95, -arm * 0.55), Vector2(arm * 0.55, -arm * 0.95), hilt_color, 4.0, true)
-			# Center boss
-			draw_circle(Vector2.ZERO, 5.0, Color(0.95, 0.78, 0.30, 1))
+			# Fletching
+			draw_line(Vector2(-r * 0.6, 0), Vector2(-r * 0.75, -4), icon_color, 1.5, true)
+			draw_line(Vector2(-r * 0.6, 0), Vector2(-r * 0.75, 4), icon_color, 1.5, true)
