@@ -36,3 +36,19 @@ exports/
 
 # Save data shouldn't be in repo (lives in user://)
 savegame.json
+
+# Godot iOS export output (regenerated each export).
+/ios-export/
+
+# Fastlane credentials and runtime artifacts.
+fastlane/.env
+fastlane/report.xml
+fastlane/test_output/
+fastlane/screenshots/
+fastlane/README.md
+
+# Xcode build artifacts if the exported project is opened locally.
+*.xcuserstate
+*.xcworkspace/xcuserdata/
+*.xcodeproj/xcuserdata/
+DerivedData/

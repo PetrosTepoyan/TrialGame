@@ -1,0 +1,92 @@
+# Fastfile for Three Towers (Godot iOS export).
+#
+# Flow:
+#   1. Godot exports the iOS Xcode project via `make export-ios` (or the
+#      Godot editor). Output: ios-export/ThreeTowers.xcodeproj.
+#   2. fastlane builds, signs, and uploads it to TestFlight from that path.
+#
+# Auth: relies on an App Store Connect API key. Set:
+#   APP_STORE_CONNECT_API_KEY_ID
+#   APP_STORE_CONNECT_ISSUER_ID
+#   APP_STORE_CONNECT_API_KEY_PATH  (path to AuthKey_<ID>.p8)
+# Or supply FASTLANE_APPLE_APPLICATION_SPECIFIC_PASSWORD for legacy Apple-ID auth.
+
+require "shellwords"
+
+xcode_select(ENV["DEVELOPER_DIR"].to_s.empty? ? "/Applications/Xcode.app" : ENV["DEVELOPER_DIR"].sub(%r{/Contents/Developer$}, ""))
+default_platform(:ios)
+
+XCODEPROJ_PATH = "ios-export/ThreeTowers.xcodeproj"
+SCHEME = "ThreeTowers"
+
+platform :ios do
+  private_lane :app_store_connect_key_from_env do
+    key_id = ENV["APP_STORE_CONNECT_API_KEY_ID"]
+    issuer_id = ENV["APP_STORE_CONNECT_ISSUER_ID"]
+    key_path = ENV["APP_STORE_CONNECT_API_KEY_PATH"]
+
+    next nil if key_id.to_s.empty? || key_path.to_s.empty?
+
+    options = { key_id: key_id, key_filepath: key_path }
+    options[:issuer_id] = issuer_id unless issuer_id.to_s.empty?
+    app_store_connect_api_key(**options)
+  end
+
+  desc "Bump build number to a YYMMDD-sequenced value above whatever's on TestFlight."
+  private_lane :ensure_unique_build_number do |options|
+    api_key = options[:api_key]
+    today_prefix = Time.now.strftime("%d%m%y")
+
+    latest = nil
+    if api_key
+      latest = latest_testflight_build_number(
+        api_key: api_key,
+        app_identifier: "com.petrostepoyan.threetowers",
+        platform: "ios",
+        live: false,
+        initial_build_number: 0,
+      ).to_s.strip
+    end
+
+    next_seq = 0
+    if latest && latest.start_with?(today_prefix)
+      next_seq = latest[6..-1].to_i + 1
+    end
+    next_build = "#{today_prefix}#{format('%04d', next_seq)}"
+
+    increment_build_number(
+      xcodeproj: XCODEPROJ_PATH,
+      build_number: next_build,
+      skip_info_plist: true,
+    )
+    UI.message("Build number set to #{next_build}")
+  end
+
+  desc "Build the Godot-exported Xcode project and upload to TestFlight."
+  lane :upload_testflight do |options|
+    options ||= {}
+    api_key = app_store_connect_key_from_env
+
+    unless File.exist?(XCODEPROJ_PATH)
+      UI.user_error!("Xcode project not found at #{XCODEPROJ_PATH}. Run the Godot iOS export first.")
+    end
+
+    ensure_unique_build_number(api_key: api_key) if api_key
+
+    gym(
+      project: XCODEPROJ_PATH,
+      scheme: SCHEME,
+      export_method: "app-store",
+      skip_profile_detection: true,
+      xcargs: "-allowProvisioningUpdates",
+      export_xcargs: "-allowProvisioningUpdates",
+      export_options: { signingStyle: "automatic" },
+    )
+
+    upload_options = { skip_waiting_for_build_processing: true }
+    upload_options[:changelog] = options[:changelog] if options[:changelog]
+    upload_options[:api_key] = api_key if api_key
+
+    upload_to_testflight(**upload_options)
+  end
+end
