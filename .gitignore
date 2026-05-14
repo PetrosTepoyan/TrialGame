@@ -1,0 +1,38 @@
+# Godot 4+ specific ignores
+.godot/
+.import/
+
+# Godot-specific ignores
+godot_log_*.txt
+*.translation
+
+# Imported translations (built from CSVs)
+*.translation
+
+# System/tool-specific ignores
+.DS_Store
+.directory
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# IDE
+.vscode/
+.idea/
+*.iml
+*.swp
+*.swo
+
+# OS
+*~
+
+# Build outputs
+build/
+dist/
+exports/
+*.ipa
+*.apk
+*.exe
+
+# Save data shouldn't be in repo (lives in user://)
+savegame.json

@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="PieceType" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/piece_type.gd" id="1_pt"]
+
+[resource]
+script = ExtResource("1_pt")
+kind = 2
+display_name = "Spear"
+color = Color(0.85, 0.32, 0.32, 1)
+base_value = 5
+match4_multiplier = 2.0
+match5_multiplier = 3.0
+sprite_path = ""
