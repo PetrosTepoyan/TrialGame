@@ -68,8 +68,8 @@ func _default_piece_types() -> Array[PieceType]:
 		pt.kind = d["kind"]
 		pt.display_name = d["name"]
 		pt.color = d["color"]
-		pt.level_values = d["values"]
-		pt.level_secondary = d["secondary"]
+		pt.level_values.assign(d["values"])
+		pt.level_secondary.assign(d["secondary"])
 		arr.append(pt)
 	return arr
 
