@@ -1,11 +1,43 @@
 class_name ActionScaleSlot
 extends Control
 
+const SPRITE_PATHS := {
+	0: "res://assets/pieces/sword.png",
+	1: "res://assets/pieces/shield.png",
+	2: "res://assets/pieces/staff.png",
+	3: "res://assets/pieces/bow.png",
+}
+
 var _emblem: Emblem = null
 var _flash_alpha: float = 0.0
+var _sprite: TextureRect = null
+
+func _ready() -> void:
+	_sprite = TextureRect.new()
+	_sprite.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_sprite.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	_sprite.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_sprite.offset_left = 8.0
+	_sprite.offset_top = 8.0
+	_sprite.offset_right = -8.0
+	_sprite.offset_bottom = -12.0
+	_sprite.visible = false
+	_sprite.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_sprite)
 
 func set_emblem(e: Emblem) -> void:
 	_emblem = e
+	if _sprite != null:
+		if e == null:
+			_sprite.texture = null
+			_sprite.visible = false
+		else:
+			var path: String = SPRITE_PATHS.get(e.piece_kind, "")
+			if path != "" and ResourceLoader.exists(path):
+				_sprite.texture = load(path)
+				_sprite.visible = true
+			else:
+				_sprite.visible = false
 	queue_redraw()
 	if e != null:
 		_pop_in()
@@ -38,10 +70,11 @@ func _draw() -> void:
 		draw_circle(c, 4.0, Color(0.4, 0.36, 0.28, 0.5))
 		return
 	var col := _emblem_color(_emblem.piece_kind)
-	# Inset color block
-	draw_rect(rect.grow(-6), col, true)
-	# Mini icon (simplified version of the piece icon)
-	_draw_mini_icon(_emblem.piece_kind)
+	# Inset color block (kept as a tint band behind the sprite)
+	draw_rect(rect.grow(-6), col.darkened(0.35), true)
+	# Mini icon (programmatic fallback when no sprite is loaded)
+	if _sprite == null or not _sprite.visible:
+		_draw_mini_icon(_emblem.piece_kind)
 	# Level pip(s) in corner
 	var level := _emblem.level
 	var dot_color := Color(1.0, 0.92, 0.50, 1)

@@ -4,24 +4,27 @@
 
 - Game design & code: this repository (MIT-licensed unless otherwise noted).
 
-## Art & Audio (recommended drop-in CC0 packs)
+## Art & Audio shipped in this repo
 
-The shipped build is **fully programmatic** — there are no third-party assets in
-this repo. The following CC0-licensed packs from Kenney.nl are recommended for
-upgrading the look-and-feel. Drop them into the matching `assets/` subfolders,
-then swap the `_draw()` calls in `scripts/board/piece.gd` and
-`scripts/ui/battle_actor.gd` for `Sprite2D` / `AnimatedSprite2D` texture loads.
+All art and audio assets currently in `assets/` are by **[Kenney](https://kenney.nl)** and licensed under [Creative Commons Zero (CC0 1.0)](https://creativecommons.org/publicdomain/zero/1.0/). CC0 means free to use, modify, and sell, with no attribution required — Kenney is credited here anyway because it's the right thing to do.
 
-| Folder              | Recommended pack                | URL                                      |
-|---------------------|---------------------------------|------------------------------------------|
-| `assets/pieces/`    | Tiny Dungeon (Kenney)           | https://kenney.nl/assets/tiny-dungeon    |
-| `assets/characters/`| Medieval RTS (Kenney)           | https://kenney.nl/assets/medieval-rts    |
-| `assets/ui/`        | Pixel UI Pack (Kenney)          | https://kenney.nl/assets/pixel-ui-pack   |
-| `assets/backgrounds/`| Background Elements Redux      | https://kenney.nl/assets/background-elements-redux |
-| `assets/audio/sfx/` | Interface Sounds (Kenney)       | https://kenney.nl/assets/interface-sounds |
-| `assets/audio/music/`| RPG Audio (Kenney) — license CC0 | https://kenney.nl/assets/rpg-audio       |
+| Pack                                            | Used for                                            | Files                                                              |
+|-------------------------------------------------|-----------------------------------------------------|--------------------------------------------------------------------|
+| [Tiny Dungeon](https://kenney.nl/assets/tiny-dungeon) | Board piece icons + battle-scene character sprites  | `assets/pieces/*.png`, `assets/characters/*.png`                   |
+| [Pixel UI Pack](https://kenney.nl/assets/pixel-ui-pack) | UI 9-slice panels                                  | `assets/ui/panel_*.png`                                            |
+| [Interface Sounds](https://kenney.nl/assets/interface-sounds) | Swap / match / invalid / hit / round-execute SFX     | `assets/audio/sfx/*.ogg`                                            |
 
-All Kenney assets are released under [Creative Commons Zero (CC0)](https://creativecommons.org/publicdomain/zero/1.0/). Attribution is not required, but is welcome.
+Per-folder `LICENSE.txt` files preserve Kenney's CC0 declaration.
+
+## Recommended next assets (V2 art swap)
+
+When custom art arrives, swap the files in-place. Below are good CC0 candidates if a custom commission isn't on the table yet:
+
+- [Kenney Medieval RTS](https://kenney.nl/assets/medieval-rts) — top-down medieval units, structures, tiles.
+- [Kenney RPG Audio](https://kenney.nl/assets/rpg-audio) — heavier combat SFX & music stings.
+- [Kevin MacLeod / incompetech.com](https://incompetech.com) — CC-BY medieval / heroic music tracks for background score.
+- [0x72 Dungeon Tileset II](https://0x72.itch.io/dungeontileset-ii) — darker pixel-fantasy alternative to Tiny Dungeon.
+- [OpenGameArt LPC](https://opengameart.org/content/lpc-collection) — Liberated Pixel Cup character animations (CC-BY-SA — verify license per asset).
 
 ## Engine
 

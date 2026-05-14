@@ -175,6 +175,7 @@ func request_swap(a: Vector2i, b: Vector2i) -> bool:
 	if abs(diff.x) + abs(diff.y) != 1:
 		return false
 	state = State.SWAPPING
+	AudioBus.play_swap()
 	_do_swap(a, b, true)
 	return true
 
@@ -196,6 +197,7 @@ func _do_swap(a: Vector2i, b: Vector2i, check_match: bool) -> void:
 		var groups := _find_matches()
 		if groups.is_empty():
 			await _do_swap(b, a, false)
+			AudioBus.play_invalid()
 			emit_signal("invalid_swap")
 			return
 		state = State.RESOLVING
@@ -230,6 +232,7 @@ func _resolve_cascade() -> void:
 			var cells: Array = g["cells"]
 			var longest: int = MatchDetector.longest_axis_run_in(cells, kind_grid)
 			emit_signal("match_resolved", k, cells.size(), longest)
+		AudioBus.play_match()
 		var all_removed: Dictionary = {}
 		for g in groups:
 			for cell in g["cells"]:

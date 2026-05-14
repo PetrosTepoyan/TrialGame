@@ -1,24 +1,33 @@
 # Assets
 
-This directory is intentionally empty. The V1 build draws everything programmatically (see `scripts/board/piece.gd` and `scripts/ui/battle_actor.gd`).
+This directory ships with **Kenney CC0 placeholder art and audio** so the game runs and looks/sounds like a real product before any custom art arrives. See `../CREDITS.md` for sources.
 
-To upgrade visuals, drop CC0 art into the following subfolders:
+## Current contents
 
 ```
-assets/pieces/        king.png shield.png spear.png archer.png
-assets/characters/    player_idle.png player_attack.png player_hurt.png
-                      enemy_idle.png enemy_attack.png enemy_hurt.png
-                      boss_*.png king_throne.png
-assets/backgrounds/   forest.png village.png wall.png courtyard.png
-                      throne_room.png mountain.png coast.png desert.png
-assets/ui/            hp_bar_bg.png hp_bar_fill.png buttons/*.png
-assets/audio/sfx/     match.wav swap.wav hit.wav heal.wav victory.wav defeat.wav
-assets/audio/music/   battle.ogg menu.ogg victory.ogg
-assets/fonts/         display.ttf body.ttf
+pieces/        sword.png shield.png staff.png bow.png      (Tiny Dungeon, 16x16 each)
+characters/    hero.png enemy.png enemy_slime.png enemy_warrior.png   (Tiny Dungeon)
+ui/            panel_brown.png panel_brown_pressed.png      (Pixel UI Pack, 9-slice)
+audio/sfx/     swap.ogg match.ogg invalid.ogg hit.ogg round_execute.ogg
 ```
 
-See `../CREDITS.md` for recommended Kenney.nl packs.
+Each subfolder also keeps the original Kenney `LICENSE.txt` (CC0).
 
-After dropping in assets, swap the programmatic `_draw()` calls for Sprite2D
-texture loads. Most piece-level changes happen in `scripts/board/piece.gd`'s
-`_draw()` — replace with `Sprite2D` configured against `PieceType.sprite_path`.
+## How the code finds these files
+
+- `scripts/board/piece.gd` looks up `res://assets/pieces/<kind>.png` per piece kind. Missing file → falls back to a programmatic icon.
+- `scripts/ui/battle_actor.gd` looks up `res://assets/characters/hero.png` / `enemy.png` (or a custom `sprite_path` set in the editor). Missing file → falls back to a programmatic figure.
+- `scripts/ui/action_scale_slot.gd` reuses the same piece sprites for the action-scale icons.
+- `scripts/autoload/audio.gd` preloads the SFX at startup; missing files degrade silently.
+
+## How to swap in different art
+
+1. Replace any `.png` in `pieces/` or `characters/` — keep the filename and the new sprite will be picked up automatically.
+2. For richer character art (e.g. the dark-fantasy illustrated knights in the investor reference), use larger PNGs and adjust `SPRITE_SCALE` in `piece.gd` / `battle_actor.gd` accordingly.
+3. To swap a single boss enemy, set `BattleActor.sprite_path` on the `EnemyBattle` node in `battle.tscn`.
+
+## How to add music
+
+Drop a track into `audio/music/` and call `AudioBus.play_music(load("res://assets/audio/music/<file>.ogg"))` from the relevant scene (e.g. `main_menu.gd` for menu, `battle.gd` for combat).
+
+[Kevin MacLeod / incompetech.com](https://incompetech.com) has CC-BY medieval tracks ("Hard Boiled", "Volatile Reaction", "Heroic Age", "Returning Heroes") — just credit him on the About screen.

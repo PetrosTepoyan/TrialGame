@@ -101,6 +101,7 @@ func _execute_round() -> void:
 	board.set_input_locked(true)
 	emit_signal("turn_changed", false)
 	emit_signal("round_executing", action_scale.duplicate())
+	AudioBus.play_round_execute()
 	var shield_choice: int = AbilityResolver.SHIELD_CHOICE_ARMOR
 	var shield_combo_level: int = _detect_shield_combo_level()
 	if shield_combo_level > 0:
@@ -177,6 +178,7 @@ func _apply_round_result(result: Dictionary) -> void:
 	if pierce > 0 or damage > 0:
 		var dealt: int = enemy.take_damage(damage, bypass > 0, pierce)
 		if dealt > 0:
+			AudioBus.play_hit()
 			emit_signal("damage_dealt", false, dealt, -1)
 	for fx_v in result.get("enemy_effects", []):
 		var fx: StatusEffect = fx_v
@@ -199,6 +201,8 @@ func _do_enemy_attack() -> void:
 			dmg += level.boss_modifier.special_attack_damage
 			emit_signal("enemy_special_attack")
 	var dealt: int = player.take_damage(dmg, false)
+	if dealt > 0:
+		AudioBus.play_hit()
 	emit_signal("damage_dealt", true, dealt, -1)
 	enemy.attacked.emit()
 
