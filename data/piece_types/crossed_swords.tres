@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="PieceType" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/piece_type.gd" id="1_pt"]
+
+[resource]
+script = ExtResource("1_pt")
+kind = 5
+display_name = "Crossed Swords"
+color = Color(0.30, 0.22, 0.36, 1)
+base_value = 4
+match4_multiplier = 1.0
+match5_multiplier = 1.0
+sprite_path = ""

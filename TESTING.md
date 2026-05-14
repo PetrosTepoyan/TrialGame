@@ -12,10 +12,13 @@ These checks should be run from the Godot editor on desktop and again on an iPho
 - [ ] **Match-3 horizontal** registers a hit on the enemy HP bar.
 - [ ] **Match-3 vertical** registers a hit.
 - [ ] **Match-3 diagonal (both axes)** each register a hit.
-- [ ] **Match-4** in any axis: damage roughly doubles, the player keeps the turn (no enemy attack).
-- [ ] **Match-5** in any axis: damage ~triples, board clears every remaining piece of that color.
-- [ ] **Cascade**: after a match the pieces fall, top refills, and any new matches also resolve.
+- [ ] **Match-4** in any axis: damage roughly doubles, the player keeps the turn, a **Bomb** tile (dark with glowing-gold border) is placed at the cell the swap moved a piece into.
+- [ ] **Match-5** in any axis: damage ~triples, the player keeps the turn, a **Crossed-Swords** tile (purple with glowing-gold border) is placed at the swap target.
+- [ ] **Cascade**: after a match the pieces fall, top refills, and any new matches also resolve. Cascade-induced matches do **not** spawn additional power-ups (only the player's first match per move can).
 - [ ] **No-moves shuffle**: when the board has zero possible swaps, pieces animate-shuffle in place.
+- [ ] **Bomb detonation**: swap a Bomb tile with any orthogonal neighbor — the bomb is consumed and a 3×3 area around it clears, dealing bonus damage proportional to cells cleared.
+- [ ] **Crossed-Swords detonation**: swap a Crossed-Swords tile with any neighbor — it clears its entire row + column. Damage bypasses enemy armor.
+- [ ] Power-ups never appear from refill — only from the player's own match-4 / match-5.
 
 ## Piece effects
 

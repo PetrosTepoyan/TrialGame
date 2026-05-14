@@ -1,7 +1,12 @@
 class_name PieceType
 extends Resource
 
-enum Kind { KING, SHIELD, SPEAR, ARCHER }
+enum Kind { KING, SHIELD, SPEAR, ARCHER, BOMB, CROSSED_SWORDS }
+
+# The first 4 kinds are the spawnable "army" pieces. The last 2 are power-up
+# tiles that are *only* placed by matching 4+ / 5+ of the same army piece —
+# never spawned from refill.
+const SPAWNABLE_KIND_COUNT: int = 4
 
 @export var kind: int = Kind.SPEAR
 @export var display_name: String = "Spear"
@@ -20,4 +25,10 @@ static func kind_to_string(k: int) -> String:
 		Kind.SHIELD: return "Shield"
 		Kind.SPEAR: return "Spear"
 		Kind.ARCHER: return "Archer"
+		Kind.BOMB: return "Bomb"
+		Kind.CROSSED_SWORDS: return "Crossed Swords"
 	return "Unknown"
+
+static func is_powerup(k: int) -> bool:
+	return k == Kind.BOMB or k == Kind.CROSSED_SWORDS
+

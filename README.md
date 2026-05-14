@@ -18,10 +18,21 @@ Pieces on the 9×9 board represent the four pillars of a medieval army:
 Matches detected in **all 8 directions**: horizontal, vertical, both diagonals.
 
 - **Match-3**: base effect
-- **Match-4**: 2× effect **and** an extra turn
-- **Match-5**: 3× effect **and** clears every remaining piece of that type from the board
+- **Match-4**: 2× effect, extra turn, **and spawns a Bomb tile** at the cell you swapped into
+- **Match-5**: 3× effect, extra turn, **and spawns a Crossed-Swords tile** at the cell you swapped into
 
 If you swap and create no match, the swap reverts and your turn ends.
+
+### Power-up tiles
+
+Spawned-in power-up tiles stay on the board until activated by **swapping them with any adjacent piece**:
+
+| Tile             | Trigger                              | Effect                                              |
+|------------------|--------------------------------------|-----------------------------------------------------|
+| Bomb             | Swap with any neighbor               | Explodes a 3×3 area — damage per cell cleared       |
+| Crossed Swords   | Swap with any neighbor               | Sweeps the full row and column — armor-piercing     |
+
+Power-ups don't appear from random refills — they are *only* placed by your own match-4 / match-5. Power-ups have a distinct glowing-gold border so they're easy to spot. Damage scales linearly with cells cleared, so a Crossed-Swords detonated from a clean board (17 cells cleared) is one of the strongest moves in the game.
 
 ## Project Layout
 

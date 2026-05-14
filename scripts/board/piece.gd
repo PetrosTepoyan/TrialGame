@@ -63,8 +63,15 @@ func _draw() -> void:
 	var inset_rect := rect.grow(-6)
 	draw_rect(inset_rect, color, true)
 	# Border
-	var border := Color(1, 1, 1, 0.18) if not is_selected else Color(1, 0.95, 0.5, 0.95)
-	draw_rect(rect.grow(-1), border, false, 3.0)
+	var border: Color
+	if is_selected:
+		border = Color(1, 0.95, 0.5, 0.95)
+	elif PieceType.is_powerup(kind):
+		border = Color(1.0, 0.85, 0.35, 0.90)  # glowing gold border for power-ups
+	else:
+		border = Color(1, 1, 1, 0.18)
+	var border_width: float = 4.0 if PieceType.is_powerup(kind) else 3.0
+	draw_rect(rect.grow(-1), border, false, border_width)
 	# Icon for kind
 	_draw_kind_icon()
 
@@ -132,3 +139,27 @@ func _draw_kind_icon() -> void:
 				Vector2(r * 0.4, 4),
 			])
 			draw_colored_polygon(ah, icon_color)
+		PieceType.Kind.BOMB:
+			# Bomb body
+			var body_r: float = SIZE * 0.30
+			draw_circle(center + Vector2(0, 4), body_r, Color(0.10, 0.10, 0.12, 1))
+			draw_circle(center + Vector2(-body_r * 0.35, -body_r * 0.35), body_r * 0.18, Color(0.45, 0.45, 0.50, 1))
+			# Fuse
+			draw_line(Vector2(body_r * 0.55, -body_r * 0.55), Vector2(body_r * 0.95, -body_r * 0.95), Color(0.85, 0.70, 0.40, 1), 3.0, true)
+			# Spark
+			draw_circle(Vector2(body_r * 1.0, -body_r * 1.0), 5.0, Color(1.0, 0.85, 0.30, 1))
+			draw_circle(Vector2(body_r * 1.0, -body_r * 1.0), 2.5, Color(1.0, 1.0, 0.85, 1))
+		PieceType.Kind.CROSSED_SWORDS:
+			# Two swords crossed in an X
+			var arm: float = SIZE * 0.38
+			var blade_color := Color(0.92, 0.92, 0.98, 1)
+			var hilt_color := Color(0.55, 0.40, 0.20, 1)
+			# Sword 1: top-left to bottom-right
+			draw_line(Vector2(-arm * 0.85, -arm * 0.85), Vector2(arm * 0.85, arm * 0.85), blade_color, 5.0, true)
+			# Sword 2: top-right to bottom-left
+			draw_line(Vector2(arm * 0.85, -arm * 0.85), Vector2(-arm * 0.85, arm * 0.85), blade_color, 5.0, true)
+			# Hilts at corners
+			draw_line(Vector2(-arm * 0.95, -arm * 0.55), Vector2(-arm * 0.55, -arm * 0.95), hilt_color, 4.0, true)
+			draw_line(Vector2(arm * 0.95, -arm * 0.55), Vector2(arm * 0.55, -arm * 0.95), hilt_color, 4.0, true)
+			# Center boss
+			draw_circle(Vector2.ZERO, 5.0, Color(0.95, 0.78, 0.30, 1))

@@ -25,6 +25,9 @@ var _input_locked: bool = false  # owner (CombatController) locks during enemy t
 var _selected_cell: Vector2i = Vector2i(-1, -1)
 var _piece_layer: Node2D
 var _rng := RandomNumberGenerator.new()
+# Cell the player swapped a piece *into*. Used so the cascade resolver knows
+# where to spawn power-up tiles when the player's move produces a match-4 / 5.
+var _last_swap_target: Vector2i = Vector2i(-1, -1)
 
 func _ready() -> void:
 	_rng.randomize()
@@ -39,10 +42,12 @@ func _default_piece_types() -> Array[PieceType]:
 	# Fallback when designer hasn't wired .tres files in the editor.
 	var arr: Array[PieceType] = []
 	var defs := [
-		{"kind": PieceType.Kind.KING,   "name": "King",   "color": Color(0.95, 0.78, 0.30), "base": 5},
-		{"kind": PieceType.Kind.SHIELD, "name": "Shield", "color": Color(0.40, 0.62, 0.95), "base": 4},
-		{"kind": PieceType.Kind.SPEAR,  "name": "Spear",  "color": Color(0.85, 0.32, 0.32), "base": 5},
-		{"kind": PieceType.Kind.ARCHER, "name": "Archer", "color": Color(0.40, 0.82, 0.50), "base": 4},
+		{"kind": PieceType.Kind.KING,           "name": "King",   "color": Color(0.95, 0.78, 0.30), "base": 5},
+		{"kind": PieceType.Kind.SHIELD,         "name": "Shield", "color": Color(0.40, 0.62, 0.95), "base": 4},
+		{"kind": PieceType.Kind.SPEAR,          "name": "Spear",  "color": Color(0.85, 0.32, 0.32), "base": 5},
+		{"kind": PieceType.Kind.ARCHER,         "name": "Archer", "color": Color(0.40, 0.82, 0.50), "base": 4},
+		{"kind": PieceType.Kind.BOMB,           "name": "Bomb",   "color": Color(0.20, 0.18, 0.22), "base": 3},
+		{"kind": PieceType.Kind.CROSSED_SWORDS, "name": "Swords", "color": Color(0.30, 0.22, 0.36), "base": 4},
 	]
 	for d in defs:
 		var pt := PieceType.new()
@@ -158,6 +163,17 @@ func request_swap(a: Vector2i, b: Vector2i) -> bool:
 	if abs(diff.x) + abs(diff.y) != 1:
 		return false
 	state = State.SWAPPING
+	_last_swap_target = b
+	# Power-up trigger: swapping a power-up tile with any neighbour activates it
+	# without needing a match. The non-power-up piece takes the power-up's slot.
+	var pa: Piece = grid[a.y][a.x]
+	var pb: Piece = grid[b.y][b.x]
+	if pa != null and pb != null:
+		var a_pow := PieceType.is_powerup(pa.kind)
+		var b_pow := PieceType.is_powerup(pb.kind)
+		if a_pow or b_pow:
+			_trigger_powerup_swap(a, b, a_pow, b_pow)
+			return true
 	_do_swap(a, b, true)
 	return true
 
@@ -190,6 +206,72 @@ func _do_swap(a: Vector2i, b: Vector2i, check_match: bool) -> void:
 	else:
 		state = State.IDLE
 
+# Swap visually completes, then the power-up detonates at its new position.
+# If both swapped pieces are power-ups we trigger both (chained, sequentially).
+func _trigger_powerup_swap(a: Vector2i, b: Vector2i, a_pow: bool, b_pow: bool) -> void:
+	var pa: Piece = grid[a.y][a.x]
+	var pb: Piece = grid[b.y][b.x]
+	grid[a.y][a.x] = pb
+	grid[b.y][b.x] = pa
+	pa.board_pos = b
+	pb.board_pos = a
+	var t1 := pa.tween_to(board_pos_to_world(b))
+	var t2 := pb.tween_to(board_pos_to_world(a))
+	await t1.finished
+	await t2.finished
+	state = State.RESOLVING
+	if a_pow:
+		# pa is now at b
+		await _detonate_powerup(b, pa.kind)
+	if b_pow:
+		# pb is now at a (may have been cleared already if a_pow's blast hit it,
+		# but _detonate_powerup is idempotent on a missing cell).
+		var still_there: Piece = grid[a.y][a.x]
+		if still_there != null and PieceType.is_powerup(still_there.kind):
+			await _detonate_powerup(a, still_there.kind)
+	# After detonations, run gravity + cascade.
+	await _apply_gravity_and_refill()
+	await _resolve_cascade()
+
+# Detonate a power-up tile at `cell`. The power-up piece itself is consumed.
+# Affected cells are removed and a synthetic match_resolved is emitted so the
+# combat layer can apply damage. Caller is responsible for running gravity
+# + cascade afterwards.
+func _detonate_powerup(cell: Vector2i, kind: int) -> void:
+	var affected: Array[Vector2i] = []
+	match kind:
+		PieceType.Kind.BOMB:
+			for dy in range(-1, 2):
+				for dx in range(-1, 2):
+					var c := Vector2i(cell.x + dx, cell.y + dy)
+					if is_in_bounds(c):
+						affected.append(c)
+		PieceType.Kind.CROSSED_SWORDS:
+			for x in range(COLS):
+				affected.append(Vector2i(x, cell.y))
+			for y in range(ROWS):
+				if y != cell.y:
+					affected.append(Vector2i(cell.x, y))
+		_:
+			return
+	var removed: int = 0
+	var last_tween: Tween = null
+	var freed: Array[Piece] = []
+	for c in affected:
+		var p: Piece = grid[c.y][c.x]
+		if p == null:
+			continue
+		last_tween = p.tween_remove()
+		freed.append(p)
+		grid[c.y][c.x] = null
+		removed += 1
+	if removed > 0:
+		emit_signal("match_resolved", kind, removed, removed)
+	if last_tween != null:
+		await last_tween.finished
+	for p in freed:
+		p.queue_free()
+
 func _find_matches() -> Array:
 	var kind_grid: Array = _kind_snapshot()
 	return MatchDetector.find_matches(kind_grid, DIAGONAL_MIN_LENGTH)
@@ -212,18 +294,26 @@ func _resolve_cascade() -> void:
 		if groups.is_empty():
 			break
 		total += groups.size()
-		# Emit per-group events
+		# Emit per-group events and decide power-up spawning per group.
 		var kind_grid := _kind_snapshot()
+		var transmute_into_powerup: Dictionary = {}  # Vector2i -> int (powerup kind)
 		for g in groups:
 			var k: int = g["kind"]
 			var cells: Array = g["cells"]
 			var longest: int = MatchDetector.longest_axis_run_in(cells, kind_grid)
 			emit_signal("match_resolved", k, cells.size(), longest)
-		# Remove cells
+			# Only the *player's* matching swap (depth 0) gets to leave a power-up.
+			# We never spawn a power-up from a power-up's own consumed pieces.
+			if depth == 0 and not PieceType.is_powerup(k) and longest >= 4:
+				var anchor: Vector2i = _choose_powerup_anchor(cells)
+				var pow_kind: int = PieceType.Kind.CROSSED_SWORDS if longest >= 5 else PieceType.Kind.BOMB
+				transmute_into_powerup[anchor] = pow_kind
+		# Remove or transmute cells.
 		var all_removed: Dictionary = {}
 		for g in groups:
 			for cell in g["cells"]:
-				all_removed[cell] = true
+				if not transmute_into_powerup.has(cell):
+					all_removed[cell] = true
 		var remove_tweens: Array[Tween] = []
 		var pieces_to_free: Array[Piece] = []
 		for cell_v in all_removed.keys():
@@ -233,6 +323,22 @@ func _resolve_cascade() -> void:
 				remove_tweens.append(p.tween_remove())
 				pieces_to_free.append(p)
 				grid[cell.y][cell.x] = null
+		# Transmute anchors into power-ups in place.
+		for cell_v in transmute_into_powerup.keys():
+			var cell: Vector2i = cell_v
+			var pow_kind: int = transmute_into_powerup[cell]
+			var p: Piece = grid[cell.y][cell.x]
+			if p == null:
+				p = _make_piece(pow_kind, cell)
+				_piece_layer.add_child(p)
+				grid[cell.y][cell.x] = p
+			else:
+				p.configure(pow_kind, piece_types[pow_kind].color, cell)
+			# Pop animation
+			var pop := create_tween()
+			p.scale = Vector2(0.4, 0.4)
+			pop.tween_property(p, "scale", Vector2(1.15, 1.15), 0.15).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+			pop.tween_property(p, "scale", Vector2(1.0, 1.0), 0.10)
 		# Wait for removal animation
 		if not remove_tweens.is_empty():
 			await remove_tweens[remove_tweens.size() - 1].finished
@@ -242,7 +348,34 @@ func _resolve_cascade() -> void:
 		await _apply_gravity_and_refill()
 		depth += 1
 	state = State.IDLE
+	_last_swap_target = Vector2i(-1, -1)
 	emit_signal("cascade_finished", total, depth)
+
+# Pick which cell in a match group becomes the power-up. Prefer the cell the
+# player swapped a piece *into* if it's part of the group; otherwise fall back
+# to the centermost cell.
+func _choose_powerup_anchor(cells: Array) -> Vector2i:
+	if _last_swap_target != Vector2i(-1, -1):
+		for cell in cells:
+			if cell == _last_swap_target:
+				return cell
+	# Centermost: pick the cell closest to the cluster centroid.
+	var cx: float = 0.0
+	var cy: float = 0.0
+	for c in cells:
+		cx += c.x
+		cy += c.y
+	cx /= max(1, cells.size())
+	cy /= max(1, cells.size())
+	var best: Vector2i = cells[0]
+	var best_d: float = INF
+	for c in cells:
+		var dv := Vector2(c.x - cx, c.y - cy)
+		var d: float = dv.length()
+		if d < best_d:
+			best_d = d
+			best = c
+	return best
 
 func _apply_gravity_and_refill() -> void:
 	var tweens: Array[Tween] = []
@@ -261,7 +394,7 @@ func _apply_gravity_and_refill() -> void:
 		# Refill from top
 		var spawn_index: int = 0
 		for y in range(write_y, -1, -1):
-			var kind: int = _rng.randi() % piece_types.size()
+			var kind: int = _rng.randi() % PieceType.SPAWNABLE_KIND_COUNT
 			var p := _make_piece(kind, Vector2i(x, y))
 			_piece_layer.add_child(p)
 			grid[y][x] = p
