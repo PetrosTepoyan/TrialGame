@@ -12,3 +12,6 @@ extends Resource
 @export var boss_modifier: BossModifier = null
 @export var is_king: bool = false
 @export var music_path: String = ""
+# Optional path to a specific enemy sprite. If empty the BattleActor falls
+# back to res://assets/characters/enemy.png.
+@export var enemy_sprite_path: String = ""

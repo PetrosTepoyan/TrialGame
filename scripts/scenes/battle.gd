@@ -32,6 +32,11 @@ func _ready() -> void:
 	_enemy_hp.actor_name = level.enemy_name
 	_player_hp.flip_fill_direction = false
 	_enemy_hp.flip_fill_direction = true
+	# If the level specifies a custom enemy sprite (boss / king), apply it.
+	if level.enemy_sprite_path != "":
+		_enemy_battle_actor.override_sprite(level.enemy_sprite_path)
+	# Music: stream the battle track.
+	AudioBus.play_music(AudioBus.load_music("res://assets/audio/music/battle.mp3"))
 	_combat.turn_changed.connect(_on_turn_changed)
 	_combat.damage_dealt.connect(_on_damage_dealt)
 	_combat.heal_done.connect(_on_heal_done)

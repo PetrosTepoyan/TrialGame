@@ -5,10 +5,13 @@ This directory ships with **Kenney CC0 placeholder art and audio** so the game r
 ## Current contents
 
 ```
-pieces/        sword.png shield.png staff.png bow.png      (Tiny Dungeon, 16x16 each)
-characters/    hero.png enemy.png enemy_slime.png enemy_warrior.png   (Tiny Dungeon)
-ui/            panel_brown.png panel_brown_pressed.png      (Pixel UI Pack, 9-slice)
-audio/sfx/     swap.ogg match.ogg invalid.ogg hit.ogg round_execute.ogg
+pieces/                sword.png shield.png staff.png bow.png        (Tiny Dungeon)
+characters/            hero.png enemy.png enemy_slime.png enemy_warrior.png
+characters/bosses/     watchtower_warden.png drum_tower_warden.png
+                       keep_warden.png king.png
+ui/                    panel_brown.png panel_brown_pressed.png       (Pixel UI Pack)
+audio/sfx/             swap.ogg match.ogg invalid.ogg hit.ogg round_execute.ogg
+audio/music/           menu.mp3 battle.mp3                            (Kevin MacLeod CC-BY)
 ```
 
 Each subfolder also keeps the original Kenney `LICENSE.txt` (CC0).

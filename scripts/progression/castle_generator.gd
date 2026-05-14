@@ -46,6 +46,7 @@ static func generate(castle_index: int) -> CastleResource:
 		boss.enemy_attack_interval = 1
 		boss.is_boss = true
 		boss.boss_modifier = _make_boss_modifier(ch_idx, castle.difficulty_multiplier)
+		boss.enemy_sprite_path = _boss_sprite_path(ch_idx)
 		ch.levels.append(boss)
 		castle.chapters.append(ch)
 
@@ -60,9 +61,17 @@ static func generate(castle_index: int) -> CastleResource:
 	king.is_boss = true
 	king.is_king = true
 	king.boss_modifier = _make_king_modifier(castle.difficulty_multiplier)
+	king.enemy_sprite_path = "res://assets/characters/bosses/king.png"
 	castle.king_level = king
 
 	return castle
+
+static func _boss_sprite_path(ch_idx: int) -> String:
+	match ch_idx:
+		0: return "res://assets/characters/bosses/watchtower_warden.png"
+		1: return "res://assets/characters/bosses/drum_tower_warden.png"
+		2: return "res://assets/characters/bosses/keep_warden.png"
+	return ""
 
 static func _theme_label(theme: String) -> String:
 	return theme.capitalize().replace("_", " ")

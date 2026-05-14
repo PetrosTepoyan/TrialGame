@@ -46,14 +46,23 @@ func play_invalid() -> void: play_sfx(sfx_invalid)
 func play_hit() -> void: play_sfx(sfx_hit)
 func play_round_execute() -> void: play_sfx(sfx_round)
 
-func play_music(stream: AudioStream, _loop: bool = true) -> void:
+func play_music(stream: AudioStream, loop: bool = true) -> void:
 	if stream == null:
 		_music.stop()
 		return
 	if _music.stream == stream and _music.playing:
 		return
+	# Both AudioStreamMP3 and AudioStreamOggVorbis expose a `loop` property.
+	if loop:
+		if stream is AudioStreamMP3:
+			(stream as AudioStreamMP3).loop = true
+		elif stream is AudioStreamOggVorbis:
+			(stream as AudioStreamOggVorbis).loop = true
 	_music.stream = stream
 	_music.play()
+
+func load_music(path: String) -> AudioStream:
+	return _try_load(path)
 
 func stop_music() -> void:
 	_music.stop()

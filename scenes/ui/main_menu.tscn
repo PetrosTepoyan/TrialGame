@@ -59,3 +59,16 @@ theme_override_font_sizes/font_size = 24
 custom_minimum_size = Vector2(0, 60)
 text = "Quit"
 theme_override_font_sizes/font_size = 24
+
+[node name="Credits" type="Label" parent="."]
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 24.0
+offset_top = -60.0
+offset_right = -24.0
+offset_bottom = -20.0
+horizontal_alignment = 1
+text = "Art: Kenney.nl (CC0)  •  Music: Kevin MacLeod / incompetech.com (CC-BY)"
+theme_override_font_sizes/font_size = 14
+theme_override_colors/font_color = Color(0.7, 0.7, 0.7, 0.85)

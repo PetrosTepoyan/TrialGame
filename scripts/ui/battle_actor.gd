@@ -20,6 +20,16 @@ func _ready() -> void:
 	_sync_sprite()
 	queue_redraw()
 
+func override_sprite(path: String) -> void:
+	if path == "" or not ResourceLoader.exists(path):
+		return
+	if _sprite != null:
+		_sprite.queue_free()
+		_sprite = null
+		_has_sprite = false
+	sprite_path = path
+	_sync_sprite()
+
 func _sync_sprite() -> void:
 	var path: String = sprite_path
 	if path == "":

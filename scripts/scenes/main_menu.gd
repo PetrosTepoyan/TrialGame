@@ -14,6 +14,7 @@ func _ready() -> void:
 	_reset_button.pressed.connect(_on_reset_pressed)
 	_quit_button.pressed.connect(_on_quit_pressed)
 	_mute_button.pressed.connect(_on_mute_pressed)
+	AudioBus.play_music(AudioBus.load_music("res://assets/audio/music/menu.mp3"))
 
 func _on_play_pressed() -> void:
 	SceneRouter.goto_chapter_map()

@@ -1,0 +1,10 @@
+Music in this folder is by Kevin MacLeod (https://incompetech.com), licensed under
+the Creative Commons Attribution 4.0 license (CC-BY 4.0).
+https://creativecommons.org/licenses/by/4.0/
+
+Tracks:
+  menu.mp3   = "Achilles"        by Kevin MacLeod
+  battle.mp3 = "Achaidh Cheide"  by Kevin MacLeod
+
+A credit line such as "Music: Kevin MacLeod (incompetech.com)" must appear in
+the application (e.g. About / Credits screen) when these tracks are used.
