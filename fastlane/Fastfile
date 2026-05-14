@@ -13,10 +13,17 @@
 
 require "shellwords"
 
+# Force UTF-8 locale so altool's binary-IPA stream doesn't blow up with
+# "invalid byte sequence in US-ASCII" (https://github.com/fastlane/fastlane/issues/21535).
+ENV["LC_ALL"] ||= "en_US.UTF-8"
+ENV["LANG"]   ||= "en_US.UTF-8"
+
 xcode_select(ENV["DEVELOPER_DIR"].to_s.empty? ? "/Applications/Xcode.app" : ENV["DEVELOPER_DIR"].sub(%r{/Contents/Developer$}, ""))
 default_platform(:ios)
 
-XCODEPROJ_PATH = "ios-export/ThreeTowers.xcodeproj"
+# fastlane runs from the fastlane/ directory, so resolve paths against the repo root.
+REPO_ROOT = File.expand_path("..", __dir__)
+XCODEPROJ_PATH = File.join(REPO_ROOT, "ios-export/ThreeTowers.xcodeproj")
 SCHEME = "ThreeTowers"
 
 platform :ios do
@@ -73,14 +80,19 @@ platform :ios do
 
     ensure_unique_build_number(api_key: api_key) if api_key
 
+    # Godot's release export pins CODE_SIGN_STYLE=Manual; override here so
+    # xcodebuild can fetch certs/profiles automatically via -allowProvisioningUpdates.
     gym(
       project: XCODEPROJ_PATH,
       scheme: SCHEME,
       export_method: "app-store",
       skip_profile_detection: true,
-      xcargs: "-allowProvisioningUpdates",
+      # TARGETED_DEVICE_FAMILY="1,2" forces universal (iPhone + iPad) since
+      # Godot 4.6's targeted_device_family=3 leaves this build setting empty,
+      # which makes App Store Connect reject the bundle (90102).
+      xcargs: "-allowProvisioningUpdates CODE_SIGN_STYLE=Automatic DEVELOPMENT_TEAM=ST2UTHBX5Z CODE_SIGN_IDENTITY=\"Apple Development\" PROVISIONING_PROFILE_SPECIFIER=\"\" TARGETED_DEVICE_FAMILY=\"1,2\"",
       export_xcargs: "-allowProvisioningUpdates",
-      export_options: { signingStyle: "automatic" },
+      export_options: { signingStyle: "automatic", teamID: "ST2UTHBX5Z" },
     )
 
     upload_options = { skip_waiting_for_build_processing: true }
