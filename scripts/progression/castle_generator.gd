@@ -28,7 +28,9 @@ static func generate(castle_index: int) -> CastleResource:
 			var lvl := LevelResource.new()
 			lvl.level_name = "%s — Skirmish %d" % [_theme_label(ch.theme), lvl_idx + 1]
 			lvl.background_color = _background_for_theme(ch.theme, rng)
+			lvl.background_path = _background_path_for_chapter(ch_idx)
 			lvl.enemy_name = _enemy_name_for_chapter(ch_idx, rng)
+			lvl.enemy_sprite_path = _regular_enemy_sprite_for_chapter(ch_idx)
 			var base_hp: float = 50.0 + ch_idx * 30.0 + lvl_idx * 12.0
 			var base_dmg: float = 5.0 + ch_idx * 3.0 + lvl_idx * 1.0
 			lvl.enemy_max_hp = int(base_hp * castle.difficulty_multiplier)
@@ -40,6 +42,7 @@ static func generate(castle_index: int) -> CastleResource:
 		var boss := LevelResource.new()
 		boss.level_name = "%s Tower" % TOWER_NAMES[ch_idx]
 		boss.background_color = _background_for_theme(ch.theme, rng).darkened(0.25)
+		boss.background_path = _background_path_for_chapter(ch_idx)
 		boss.enemy_name = "%s Warden" % TOWER_NAMES[ch_idx]
 		boss.enemy_max_hp = int((180.0 + ch_idx * 80.0) * castle.difficulty_multiplier)
 		boss.enemy_damage = int((10.0 + ch_idx * 3.0) * castle.difficulty_multiplier)
@@ -62,6 +65,7 @@ static func generate(castle_index: int) -> CastleResource:
 	king.is_king = true
 	king.boss_modifier = _make_king_modifier(castle.difficulty_multiplier)
 	king.enemy_sprite_path = "res://assets/characters/bosses/king.png"
+	king.background_path = "res://assets/backgrounds/throne.png"
 	castle.king_level = king
 
 	return castle
@@ -72,6 +76,22 @@ static func _boss_sprite_path(ch_idx: int) -> String:
 		1: return "res://assets/characters/bosses/drum_tower_warden.png"
 		2: return "res://assets/characters/bosses/keep_warden.png"
 	return ""
+
+static func _background_path_for_chapter(ch_idx: int) -> String:
+	match ch_idx:
+		0: return "res://assets/backgrounds/forest.png"
+		1: return "res://assets/backgrounds/walls.png"
+		2: return "res://assets/backgrounds/keep.png"
+	return "res://assets/backgrounds/forest.png"
+
+# Each chapter has its own regular footsoldier sprite so the world looks
+# different as the player progresses (forest brigand -> walls guard -> keep mage).
+static func _regular_enemy_sprite_for_chapter(ch_idx: int) -> String:
+	match ch_idx:
+		0: return "res://assets/characters/enemy.png"          # generic soldier
+		1: return "res://assets/characters/enemy_warrior.png"  # armoured warrior
+		2: return "res://assets/characters/enemy_slime.png"    # otherworldly slime
+	return "res://assets/characters/enemy.png"
 
 static func _theme_label(theme: String) -> String:
 	return theme.capitalize().replace("_", " ")

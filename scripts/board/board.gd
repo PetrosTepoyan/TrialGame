@@ -246,6 +246,7 @@ func _resolve_cascade() -> void:
 				remove_tweens.append(p.tween_remove())
 				pieces_to_free.append(p)
 				grid[cell.y][cell.x] = null
+				MatchParticles.spawn(p.position, piece_types[p.kind].color, _piece_layer)
 		if not remove_tweens.is_empty():
 			await remove_tweens[remove_tweens.size() - 1].finished
 		for p in pieces_to_free:

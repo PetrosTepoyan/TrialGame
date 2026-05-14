@@ -12,8 +12,10 @@ var castle_index: int = 0
 var chapter_index: int = 0
 var level_index: int = 0
 var completed_levels: Dictionary = {}
+var level_stars: Dictionary = {}  # "c.ch.l" -> stars (1..3)
 var player_max_hp: int = 100
 var current_castle: CastleResource = null
+var tutorial_seen: bool = false
 
 func _ready() -> void:
 	load_game()
@@ -27,6 +29,23 @@ func mark_level_completed(c_idx: int, ch_idx: int, lvl_idx: int) -> void:
 	var key := _key(c_idx, ch_idx, lvl_idx)
 	completed_levels[key] = true
 	emit_signal("progress_changed")
+	save_game()
+
+func mark_level_stars(c_idx: int, ch_idx: int, lvl_idx: int, stars: int) -> void:
+	var key := _key(c_idx, ch_idx, lvl_idx)
+	var existing: int = int(level_stars.get(key, 0))
+	if stars > existing:
+		level_stars[key] = stars
+		save_game()
+
+func get_level_stars(c_idx: int, ch_idx: int, lvl_idx: int) -> int:
+	return int(level_stars.get(_key(c_idx, ch_idx, lvl_idx), 0))
+
+func has_seen_tutorial() -> bool:
+	return tutorial_seen
+
+func mark_tutorial_seen() -> void:
+	tutorial_seen = true
 	save_game()
 
 func is_level_completed(c_idx: int, ch_idx: int, lvl_idx: int) -> bool:
@@ -98,6 +117,8 @@ func save_game() -> void:
 		"level_index": level_index,
 		"player_max_hp": player_max_hp,
 		"completed_levels": completed_levels,
+		"level_stars": level_stars,
+		"tutorial_seen": tutorial_seen,
 	}
 	var f := FileAccess.open(SAVE_TMP, FileAccess.WRITE)
 	if f == null:
@@ -132,6 +153,8 @@ func load_game() -> void:
 	level_index = int(data.get("level_index", 0))
 	player_max_hp = int(data.get("player_max_hp", 100))
 	completed_levels = data.get("completed_levels", {})
+	level_stars = data.get("level_stars", {})
+	tutorial_seen = bool(data.get("tutorial_seen", false))
 	emit_signal("save_loaded")
 
 func reset_save() -> void:
@@ -139,6 +162,8 @@ func reset_save() -> void:
 	chapter_index = 0
 	level_index = 0
 	completed_levels.clear()
+	level_stars.clear()
+	tutorial_seen = false
 	player_max_hp = 100
 	current_castle = CastleGenerator.generate(0)
 	if FileAccess.file_exists(SAVE_PATH):

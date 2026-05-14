@@ -1,6 +1,7 @@
-[gd_scene load_steps=2 format=3]
+[gd_scene load_steps=3 format=3]
 
 [ext_resource type="Script" path="res://scripts/scenes/main_menu.gd" id="1_mm"]
+[ext_resource type="PackedScene" path="res://scenes/ui/settings_panel.tscn" id="2_sp"]
 
 [node name="MainMenu" type="Control"]
 anchor_right = 1.0
@@ -50,15 +51,18 @@ custom_minimum_size = Vector2(0, 60)
 text = "Reset Save"
 theme_override_font_sizes/font_size = 24
 
-[node name="MuteButton" type="Button" parent="Center/VBox"]
+[node name="SettingsButton" type="Button" parent="Center/VBox"]
 custom_minimum_size = Vector2(0, 60)
-text = "Sound: ON"
+text = "Settings"
 theme_override_font_sizes/font_size = 24
 
 [node name="QuitButton" type="Button" parent="Center/VBox"]
 custom_minimum_size = Vector2(0, 60)
 text = "Quit"
 theme_override_font_sizes/font_size = 24
+
+[node name="SettingsPanel" parent="." instance=ExtResource("2_sp")]
+visible = false
 
 [node name="Credits" type="Label" parent="."]
 anchor_top = 1.0

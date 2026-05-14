@@ -13,12 +13,30 @@ const SPRITE_SCALE: float = 8.0  # Tiny Dungeon 16x16 -> 128x128
 var _shake_amount: float = 0.0
 var _flash_white: float = 0.0
 var _tween: Tween
+var _idle_tween: Tween
 var _sprite: Sprite2D = null
 var _has_sprite: bool = false
+var _base_position: Vector2 = Vector2.ZERO
+var _is_busy: bool = false
 
 func _ready() -> void:
 	_sync_sprite()
+	_base_position = position
+	_start_idle()
 	queue_redraw()
+
+func _start_idle() -> void:
+	if _idle_tween != null and _idle_tween.is_running():
+		_idle_tween.kill()
+	_idle_tween = create_tween().set_loops()
+	var up := _base_position + Vector2(0, -4)
+	var down := _base_position + Vector2(0, 0)
+	_idle_tween.tween_property(self, "position", up, 0.9).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	_idle_tween.tween_property(self, "position", down, 0.9).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+
+func _stop_idle() -> void:
+	if _idle_tween != null and _idle_tween.is_running():
+		_idle_tween.kill()
 
 func override_sprite(path: String) -> void:
 	if path == "" or not ResourceLoader.exists(path):
@@ -49,24 +67,33 @@ func _sync_sprite() -> void:
 
 func attack() -> void:
 	_kill()
+	_stop_idle()
+	_is_busy = true
 	var dir: float = 1.0 if is_player else -1.0
-	var start: Vector2 = position
 	_tween = create_tween()
-	_tween.tween_property(self, "position", start + Vector2(dir * 24, -6), 0.10).set_trans(Tween.TRANS_QUAD)
-	_tween.tween_property(self, "position", start, 0.14).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	_tween.tween_property(self, "position", _base_position + Vector2(dir * 36, -10), 0.10).set_trans(Tween.TRANS_QUAD)
+	_tween.tween_property(self, "position", _base_position, 0.18).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	_tween.tween_callback(_resume_idle)
 
 func hurt() -> void:
+	_stop_idle()
+	_is_busy = true
 	_flash_white = 1.0
 	if _sprite != null:
 		_sprite.modulate = Color(1.0, 0.4, 0.4)
 	queue_redraw()
 	var t := create_tween()
-	t.tween_method(_set_flash, 1.0, 0.0, 0.25)
-	var origin := position
+	t.tween_method(_set_flash, 1.0, 0.0, 0.30)
 	var shake := create_tween()
-	for i in range(6):
-		shake.tween_property(self, "position", origin + Vector2(randf_range(-6.0, 6.0), randf_range(-4.0, 4.0)), 0.04)
-	shake.tween_property(self, "position", origin, 0.06)
+	for i in range(8):
+		shake.tween_property(self, "position", _base_position + Vector2(randf_range(-8.0, 8.0), randf_range(-6.0, 6.0)), 0.035)
+	shake.tween_property(self, "position", _base_position, 0.08)
+	shake.tween_callback(_resume_idle)
+
+func _resume_idle() -> void:
+	_is_busy = false
+	position = _base_position
+	_start_idle()
 
 func _set_flash(v: float) -> void:
 	_flash_white = v
@@ -75,6 +102,7 @@ func _set_flash(v: float) -> void:
 	queue_redraw()
 
 func die() -> void:
+	_stop_idle()
 	var t := create_tween()
 	t.tween_property(self, "modulate:a", 0.0, 0.6)
 	t.parallel().tween_property(self, "rotation_degrees", -85.0 if is_player else 85.0, 0.6)

@@ -47,7 +47,11 @@ func _build_chapter_panel(ch_idx: int, chapter: ChapterResource) -> Control:
 		var unlocked: bool = GameState.is_level_unlocked(GameState.castle_index, ch_idx, lvl_idx)
 		var completed: bool = GameState.is_level_completed(GameState.castle_index, ch_idx, lvl_idx)
 		if completed:
-			btn.text = label + "\nCleared"
+			var stars: int = GameState.get_level_stars(GameState.castle_index, ch_idx, lvl_idx)
+			var star_str := ""
+			for s in range(stars):
+				star_str += "*"
+			btn.text = label + "\n" + star_str
 		btn.disabled = not unlocked
 		btn.pressed.connect(_on_level_pressed.bind(ch_idx, lvl_idx))
 		h.add_child(btn)
