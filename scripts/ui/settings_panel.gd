@@ -15,11 +15,16 @@ func _ready() -> void:
 	_close_btn.pressed.connect(_on_close_pressed)
 
 func _on_music_toggled(value: bool) -> void:
+	AudioBus.play_ui_click()
 	AudioBus.set_music_enabled(value)
 
 func _on_sfx_toggled(value: bool) -> void:
 	AudioBus.set_sfx_enabled(value)
+	# Play the click *after* enabling so a re-enable produces audible feedback.
+	AudioBus.play_ui_click()
 
 func _on_close_pressed() -> void:
+	AudioBus.play_ui_click()
+	AudioBus.play_panel_close()
 	visible = false
 	emit_signal("closed")

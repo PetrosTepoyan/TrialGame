@@ -141,21 +141,28 @@ func _on_status_applied(target_is_player: bool, fx: StatusEffect) -> void:
 		StatusEffect.Kind.BLEED: color = Color(0.95, 0.30, 0.40)
 		StatusEffect.Kind.STUN: color = Color(1.00, 0.92, 0.40)
 		StatusEffect.Kind.DEFENSE_DEBUFF: color = Color(0.85, 0.55, 1.00)
+	AudioBus.play_status(fx.kind)
 	_spawn_float_text(anchor.global_position + Vector2(0, -130), label, color, 0)
 
 func _on_shield_choice_required(combo_level: int) -> void:
 	_shield_subtitle.text = "Combo Level %d — pick a path" % combo_level
 	_shield_popup.visible = true
+	AudioBus.play_panel_open()
 
 func _on_shield_armor_chosen() -> void:
+	AudioBus.play_ui_click()
 	_shield_popup.visible = false
+	AudioBus.play_panel_close()
 	_combat.provide_shield_choice(AbilityResolver.SHIELD_CHOICE_ARMOR)
 
 func _on_shield_stun_chosen() -> void:
+	AudioBus.play_ui_click()
 	_shield_popup.visible = false
+	AudioBus.play_panel_close()
 	_combat.provide_shield_choice(AbilityResolver.SHIELD_CHOICE_STUN)
 
 func _on_battle_won() -> void:
+	AudioBus.play_victory_sting()
 	await get_tree().create_timer(0.6).timeout
 	_enemy_battle_actor.die()
 	await get_tree().create_timer(0.7).timeout
@@ -169,6 +176,7 @@ func _on_battle_won() -> void:
 		SceneRouter.goto_chapter_map()
 
 func _on_battle_lost() -> void:
+	AudioBus.play_defeat_sting()
 	await get_tree().create_timer(0.6).timeout
 	_player_battle_actor.die()
 	await get_tree().create_timer(0.7).timeout
@@ -178,9 +186,15 @@ func _on_enemy_stunned() -> void:
 	_spawn_float_text(_enemy_battle_actor.global_position + Vector2(0, -120), "STUNNED!", Color(1, 0.92, 0.30), 99)
 
 func _on_pause() -> void:
+	AudioBus.play_ui_click()
 	_settings_panel.visible = not _settings_panel.visible
+	if _settings_panel.visible:
+		AudioBus.play_panel_open()
+	else:
+		AudioBus.play_panel_close()
 
 func _on_exit_pressed() -> void:
+	AudioBus.play_ui_click()
 	SceneRouter.goto_chapter_map()
 
 func _on_round_finished_count() -> void:

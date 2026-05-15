@@ -232,7 +232,7 @@ func _resolve_cascade() -> void:
 			var cells: Array = g["cells"]
 			var longest: int = MatchDetector.longest_axis_run_in(cells, kind_grid)
 			emit_signal("match_resolved", k, cells.size(), longest)
-		AudioBus.play_match()
+		AudioBus.play_match(groups.map(func(g): return MatchDetector.longest_axis_run_in(g["cells"], kind_grid)).max())
 		var all_removed: Dictionary = {}
 		for g in groups:
 			for cell in g["cells"]:
