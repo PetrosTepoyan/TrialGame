@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="BoardItem" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/board_item.gd" id="1_bi"]
+
+[resource]
+script = ExtResource("1_bi")
+id = "fire_bomb"
+display_name = "Fire Bomb"
+integrity = 1
+sprite_path = ""
+effect_kind = 5
+effect_magnitude = 5.0
+effect_duration = 5.0
+spawn_weight = 0.8
+target = 1
+tint = Color(0.95, 0.5, 0.15, 1)

@@ -4,20 +4,27 @@ extends Node2D
 signal swap_animated
 # from_rainbow flags any group that pulled in a rainbow tile — combat treats
 # those as forced L3 matches regardless of axis-run length.
-signal match_resolved(kind: int, count: int, longest_run: int, from_rainbow: bool)
+# effective_level: 1 = run-3 plain, 2 = run-4 OR 2x2 square OR L-corner,
+# 3 = run-5+ OR rainbow. Combat reads this directly instead of recomputing.
+# Callers: scripts/combat/combat_controller.gd::_on_match_resolved (will update in Phase B for effective_level arg).
+signal match_resolved(kind: int, count: int, longest_run: int, from_rainbow: bool, effective_level: int)
 signal cascade_finished(total_matches: int, cascade_depth: int)
 signal invalid_swap
 signal shuffle_started
 signal shuffle_finished
 
-const ROWS := 5
-const COLS := 5
+const ROWS := 9
+const COLS := 9
 const CELL: float = Piece.SIZE
 const SPACING: float = 4.0
 const MAX_CASCADE_DEPTH := 20
-# 99 effectively disables diagonal matches on this 5x5 board — players found
+# 99 effectively disables diagonal matches on this 9x9 board — players found
 # diagonal-4 matches confusing and unintentional. Horizontal/vertical only.
 const DIAGONAL_MIN_LENGTH := 99
+
+# Board pixel footprint at 9x9 / SIZE=108 / SPACING=4: 9*108 + 9*4 = 1008px square.
+# Phase B should size BoardArea in scenes/battle.tscn accordingly (e.g. centered
+# on a 1080px-wide viewport with offsets ~36px from the left/right edges).
 
 # --- Tunable mechanics ---
 # Rainbow tile removed per player feedback ("strange multi-colored icons with
@@ -313,7 +320,14 @@ func _resolve_cascade() -> void:
 			var cells: Array = g["cells"]
 			var longest: int = MatchDetector.longest_axis_run_in(cells, kind_grid)
 			var from_rainbow: bool = bool(g.get("had_rainbow", false))
-			emit_signal("match_resolved", k, cells.size(), longest, from_rainbow)
+			var is_square: bool = bool(g.get("is_square", false))
+			var had_corner: bool = bool(g.get("had_corner", false))
+			var effective_level: int = 1
+			if longest >= 5 or from_rainbow:
+				effective_level = 3
+			elif longest >= 4 or is_square or had_corner:
+				effective_level = 2
+			emit_signal("match_resolved", k, cells.size(), longest, from_rainbow, effective_level)
 			Haptics.light_tap()
 			for cell_v in cells:
 				var prev: int = int(cell_run.get(cell_v, 0))

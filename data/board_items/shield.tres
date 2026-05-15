@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="BoardItem" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/board_item.gd" id="1_bi"]
+
+[resource]
+script = ExtResource("1_bi")
+id = "shield"
+display_name = "Shield"
+integrity = 1
+sprite_path = ""
+effect_kind = 1
+effect_magnitude = 5.0
+effect_duration = 0.0
+spawn_weight = 1.0
+target = 0
+tint = Color(0.5, 0.6, 0.9, 1)

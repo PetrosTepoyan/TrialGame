@@ -18,23 +18,26 @@ static func find_matches(grid: Array, diagonal_min_length: int = 3) -> Array:
 	if size_rows == 0:
 		return []
 	var size_cols: int = grid[0].size()
-	var runs: Array = []  # Array of Array of Vector2i
-	# Axes: dx, dy, min_length
+	var runs: Array = []  # Array of Array of Vector2i, tagged with axis info
+	var run_axes: Array = []  # parallel: "H" / "V" / "D" per run for corner detection
+	# Axes: dx, dy, min_length, tag
 	var axes := [
-		[1, 0, 3],   # horizontal
-		[0, 1, 3],   # vertical
-		[1, 1, diagonal_min_length],  # diag down-right
-		[1, -1, diagonal_min_length], # diag up-right
+		[1, 0, 3, "H"],   # horizontal
+		[0, 1, 3, "V"],   # vertical
+		[1, 1, diagonal_min_length, "D"],  # diag down-right
+		[1, -1, diagonal_min_length, "D"], # diag up-right
 	]
 	for axis in axes:
 		var dx: int = axis[0]
 		var dy: int = axis[1]
 		var minlen: int = axis[2]
+		var tag: String = axis[3]
 		# Iterate each cell as a candidate run-start; only count it if previous
 		# cell on this axis is different kind (or out of bounds), otherwise skip.
 		for y in range(size_rows):
 			for x in range(size_cols):
 				var k: int = grid[y][x]
+				# Phase D: ItemPiece cells will report kind == -1 and break runs naturally.
 				if k < 0 or k == PieceType.Kind.RAINBOW:
 					# Rainbows never start a run on their own — they only fold
 					# into an existing army-kind run.
@@ -53,12 +56,39 @@ static func find_matches(grid: Array, diagonal_min_length: int = 3) -> Array:
 					cy += dy
 				if run.size() >= minlen:
 					runs.append(run)
-	if runs.is_empty():
+					run_axes.append(tag)
+	# Standalone 2x2 squares — detected even when no axis-3 run exists.
+	var squares: Array = _find_squares(grid, size_cols, size_rows)
+	if runs.is_empty() and squares.is_empty():
 		return []
-	var merged: Array = _merge_overlapping(runs, grid)
+	var merged: Array = _merge_overlapping(runs, run_axes, squares, grid)
 	# Pull in rainbows adjacent (orthogonally OR diagonally) to any matched cell,
 	# and then expand the cluster to include ALL board tiles of that kind.
 	return _expand_rainbows(merged, grid, size_cols, size_rows)
+
+# Returns Array of squares; each square is { "cells": [4 Vector2i], "kind": int }.
+static func _find_squares(grid: Array, cols: int, rows: int) -> Array:
+	var out: Array = []
+	for y in range(rows - 1):
+		for x in range(cols - 1):
+			var k: int = grid[y][x]
+			# Phase D: ItemPiece cells will report kind == -1 and break runs naturally.
+			if k < 0 or k == PieceType.Kind.RAINBOW:
+				continue
+			if grid[y][x + 1] != k:
+				continue
+			if grid[y + 1][x] != k:
+				continue
+			if grid[y + 1][x + 1] != k:
+				continue
+			out.append({
+				"kind": k,
+				"cells": [
+					Vector2i(x, y), Vector2i(x + 1, y),
+					Vector2i(x, y + 1), Vector2i(x + 1, y + 1),
+				],
+			})
+	return out
 
 static func _expand_rainbows(groups: Array, grid: Array, cols: int, rows: int) -> Array:
 	if groups.is_empty():
@@ -104,29 +134,59 @@ static func _expand_rainbows(groups: Array, grid: Array, cols: int, rows: int) -
 	return groups
 
 # Merge runs that share at least one cell AND the same kind.
-static func _merge_overlapping(runs: Array, grid: Array) -> Array:
+# `run_axes` is a parallel array tagging each run as "H", "V", or "D" so we can
+# flag clusters that contain BOTH an H-run >=3 AND a V-run >=3 sharing a cell
+# (an L-corner). `squares` are pre-detected 2x2 groups absorbed into matching
+# clusters; standalone squares stay as their own group with `is_square=true`.
+static func _merge_overlapping(runs: Array, run_axes: Array, squares: Array, grid: Array) -> Array:
+	# Each item bundles a run-or-square's cells + flags so they merge uniformly.
+	# axis: "H" | "V" | "D" | "S" (S = square; not used for corner flag).
+	var items: Array = []
+	for i in range(runs.size()):
+		var first: Vector2i = runs[i][0]
+		items.append({
+			"kind": int(grid[first.y][first.x]),
+			"cells": runs[i],
+			"axis": String(run_axes[i]),
+			"length": runs[i].size(),
+		})
+	for sq in squares:
+		items.append({
+			"kind": int(sq["kind"]),
+			"cells": sq["cells"],
+			"axis": "S",
+			"length": 4,
+		})
 	# Group by kind first to avoid mixing.
 	var by_kind: Dictionary = {}
-	for run in runs:
-		var first: Vector2i = run[0]
-		var k: int = grid[first.y][first.x]
+	for it in items:
+		var k: int = it["kind"]
 		if not by_kind.has(k):
 			by_kind[k] = []
-		by_kind[k].append(run)
+		by_kind[k].append(it)
 	var result: Array = []
 	for k in by_kind.keys():
 		var pool: Array = by_kind[k]
 		while not pool.is_empty():
 			var cluster: Dictionary = {}
+			var has_h3: bool = false
+			var has_v3: bool = false
+			var has_square: bool = false
 			var queue: Array = [pool.pop_back()]
 			while not queue.is_empty():
-				var run: Array = queue.pop_back()
-				for cell in run:
+				var it: Dictionary = queue.pop_back()
+				for cell in it["cells"]:
 					cluster[cell] = true
+				if it["axis"] == "H" and int(it["length"]) >= 3:
+					has_h3 = true
+				elif it["axis"] == "V" and int(it["length"]) >= 3:
+					has_v3 = true
+				elif it["axis"] == "S":
+					has_square = true
 				var still_outside: Array = []
 				for other in pool:
 					var shares: bool = false
-					for cell in other:
+					for cell in other["cells"]:
 						if cluster.has(cell):
 							shares = true
 							break
@@ -138,6 +198,8 @@ static func _merge_overlapping(runs: Array, grid: Array) -> Array:
 			result.append({
 				"kind": k,
 				"cells": cluster.keys(),
+				"is_square": has_square,
+				"had_corner": has_h3 and has_v3,
 			})
 	return result
 

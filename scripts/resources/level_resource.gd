@@ -15,3 +15,6 @@ extends Resource
 # Optional path to a specific enemy sprite. If empty the BattleActor falls
 # back to res://assets/characters/enemy.png.
 @export var enemy_sprite_path: String = ""
+@export var encounter_modifier: EncounterModifier = null
+@export var checkpoint_index: int = -1
+@export var is_checkpoint: bool = false

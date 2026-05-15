@@ -40,7 +40,10 @@ static func _swap_creates_match(grid: Array, x1: int, y1: int, x2: int, y2: int,
 		return false
 	grid[y1][x1] = k2
 	grid[y2][x2] = k1
-	var has := _has_any_match_at(grid, x1, y1, dmin) or _has_any_match_at(grid, x2, y2, dmin)
+	var has := _has_any_match_at(grid, x1, y1, dmin) \
+		or _has_any_match_at(grid, x2, y2, dmin) \
+		or _swap_creates_square(grid, x1, y1) \
+		or _swap_creates_square(grid, x2, y2)
 	grid[y1][x1] = k1
 	grid[y2][x2] = k2
 	return has
@@ -75,4 +78,22 @@ static func _has_any_match_at(grid: Array, x: int, y: int, dmin: int) -> bool:
 			cy -= d.y
 		if count >= minlen:
 			return true
+	return false
+
+# Returns true if any 2x2 square anchored at one of the four positions
+# (x-1..x, y-1..y) ends up all the same kind. Rainbows and empty (-1) cells
+# never participate.
+static func _swap_creates_square(grid: Array, x: int, y: int) -> bool:
+	var k: int = grid[y][x]
+	if k < 0 or k == PieceType.Kind.RAINBOW:
+		return false
+	var rows: int = grid.size()
+	var cols: int = grid[0].size()
+	for ax in [x - 1, x]:
+		for ay in [y - 1, y]:
+			if ax < 0 or ay < 0 or ax + 1 >= cols or ay + 1 >= rows:
+				continue
+			if grid[ay][ax] == k and grid[ay][ax + 1] == k \
+				and grid[ay + 1][ax] == k and grid[ay + 1][ax + 1] == k:
+				return true
 	return false

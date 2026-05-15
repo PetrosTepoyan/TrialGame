@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="SpecialAttack" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/special_attack.gd" id="1_sa"]
+
+[resource]
+script = ExtResource("1_sa")
+id = "shield_bash"
+level = 1
+base_damage = 8
+status_on_hit = null
+bypass_armor = false
+animation_id = "shield_bash"
+button_color = Color(0.4, 0.7, 1.0, 1)
+stun_seconds = 5.0

@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="BoardItem" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/board_item.gd" id="1_bi"]
+
+[resource]
+script = ExtResource("1_bi")
+id = "sword_up"
+display_name = "Sword+"
+integrity = 1
+sprite_path = ""
+effect_kind = 3
+effect_magnitude = 3.0
+effect_duration = 10.0
+spawn_weight = 0.8
+target = 0
+tint = Color(0.85, 0.85, 0.3, 1)
