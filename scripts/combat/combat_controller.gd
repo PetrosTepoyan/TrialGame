@@ -9,7 +9,9 @@ extends Node
 #      - effects apply (damage, heal, armor, status effects)
 #      - existing DoTs/stuns tick on both actors
 #      - enemy attacks once (skipped while stunned)
-#   3. Scale resets. Any cascaded matches beyond the 5th emblem queue for next round.
+#   3. Scale resets to empty. Any cascaded matches beyond the 5th emblem
+#      BURN — they don't carry into the next round. Player must earn the next
+#      5 emblems from scratch.
 
 signal turn_changed(is_player_turn: bool)
 signal damage_dealt(target_is_player: bool, amount: int, source_kind: int)
@@ -18,6 +20,9 @@ signal status_applied(target_is_player: bool, effect: StatusEffect)
 signal emblem_added(emblem: Emblem, scale_size: int)
 signal round_executing(emblems: Array)
 signal round_finished
+signal enemy_emblem_added(emblem: Emblem, scale_size: int)
+signal enemy_round_executing(emblems: Array)
+signal enemy_round_finished
 signal shield_choice_required(combo_level: int)
 signal battle_won
 signal battle_lost
@@ -27,6 +32,7 @@ signal enemy_stunned_skipped
 enum State { PLAYER_INPUT, RESOLVING, ENEMY_TURN, ENDED }
 
 const SCALE_CAPACITY: int = 5
+const ENEMY_SCALE_CAPACITY: int = 5
 
 @export var board_path: NodePath
 @export var player_actor_path: NodePath
@@ -39,7 +45,7 @@ const SCALE_CAPACITY: int = 5
 
 var state: int = State.PLAYER_INPUT
 var action_scale: Array = []            # Array[Emblem]
-var _overflow_emblems: Array = []       # Emblems collected while a round is mid-execution
+var enemy_action_scale: Array = []      # Array[Emblem] — fills 1 per round; fires at 5
 var _player_round_count: int = 0
 var _pending_shield_choice: int = -1
 
@@ -73,11 +79,12 @@ func _on_match_resolved(kind: int, _count: int, longest_run: int) -> void:
 		return
 	var lvl: int = PieceType.level_from_match(longest_run)
 	var e := Emblem.new(kind, lvl)
+	# Scale is capped at 5. Extra emblems from cascades burn — the player has
+	# to earn the next 5 from scratch after a round fires.
 	if action_scale.size() >= SCALE_CAPACITY:
-		_overflow_emblems.append(e)
-	else:
-		action_scale.append(e)
-		emit_signal("emblem_added", e, action_scale.size())
+		return
+	action_scale.append(e)
+	emit_signal("emblem_added", e, action_scale.size())
 
 func _on_cascade_finished(_total: int, _depth: int) -> void:
 	if state == State.ENDED:
@@ -111,19 +118,32 @@ func _execute_round() -> void:
 	await _apply_round_result(result)
 	if state == State.ENDED:
 		return
-	# Enemy attack (skipped if stunned). Stun is checked BEFORE ticking so the
-	# duration counts as the number of rounds the enemy actually loses.
+	# Enemy turn — symmetric to the player. The enemy gains 1 emblem per round.
+	# When its scale fills, it unleashes a single 5-emblem attack (5× base
+	# damage). Stun skips emblem gain AND attack — checked BEFORE ticking so
+	# the duration counts as the number of rounds the enemy actually loses.
 	var enemy_was_stunned: bool = enemy.is_stunned()
 	if enemy_was_stunned:
 		emit_signal("enemy_stunned_skipped")
 	else:
-		state = State.ENEMY_TURN
-		emit_signal("turn_changed", false)
-		await get_tree().create_timer(0.45).timeout
-		if state == State.ENDED:
-			return
-		_do_enemy_attack()
-		await get_tree().create_timer(0.45).timeout
+		# Charge: enemy gains 1 emblem this round (visible buildup).
+		if enemy_action_scale.size() < ENEMY_SCALE_CAPACITY:
+			var enemy_emblem := _generate_enemy_emblem()
+			enemy_action_scale.append(enemy_emblem)
+			emit_signal("enemy_emblem_added", enemy_emblem, enemy_action_scale.size())
+			await get_tree().create_timer(0.30).timeout
+		# Fire: if the scale just filled, the enemy attacks now and resets.
+		if enemy_action_scale.size() >= ENEMY_SCALE_CAPACITY:
+			state = State.ENEMY_TURN
+			emit_signal("turn_changed", false)
+			emit_signal("enemy_round_executing", enemy_action_scale.duplicate())
+			await get_tree().create_timer(0.45).timeout
+			if state == State.ENDED:
+				return
+			_do_enemy_attack()
+			await get_tree().create_timer(0.45).timeout
+			enemy_action_scale = []
+			emit_signal("enemy_round_finished")
 	# Tick DoTs and decrement effect durations now that the round resolved.
 	# DoTs apply their damage and stun/debuff counters advance.
 	var enemy_dot: int = enemy.tick_effects()
@@ -134,9 +154,8 @@ func _execute_round() -> void:
 		emit_signal("damage_dealt", true, player_dot, -1)
 	if state == State.ENDED:
 		return
-	# Reset scale, accept any overflow emblems collected mid-round.
-	action_scale = _overflow_emblems
-	_overflow_emblems = []
+	# Reset scale to empty — overflow emblems collected mid-round are discarded.
+	action_scale = []
 	_player_round_count += 1
 	emit_signal("round_finished")
 	_recheck_player_input()
@@ -191,7 +210,10 @@ func _apply_round_result(result: Dictionary) -> void:
 	await get_tree().create_timer(0.25).timeout
 
 func _do_enemy_attack() -> void:
-	var dmg: int = enemy.base_damage
+	# Called when the enemy's action scale fills. Damage scales with the
+	# capacity so average DPR matches the old "attack every round" model
+	# (1× per round → 5× every 5 rounds).
+	var dmg: int = enemy.base_damage * ENEMY_SCALE_CAPACITY
 	if level != null and level.boss_modifier != null:
 		var hp_frac: float = float(enemy.current_hp) / float(max(1, enemy.max_hp))
 		if hp_frac <= level.boss_modifier.enrage_threshold:
@@ -205,6 +227,18 @@ func _do_enemy_attack() -> void:
 		AudioBus.play_hit()
 	emit_signal("damage_dealt", true, dealt, -1)
 	enemy.attacked.emit()
+
+func _generate_enemy_emblem() -> Emblem:
+	# The kind is purely cosmetic — the actual damage comes from base_damage
+	# × capacity. Random kind keeps the bar visually varied.
+	var kinds: Array = [
+		PieceType.Kind.SWORD,
+		PieceType.Kind.SHIELD,
+		PieceType.Kind.STAFF,
+		PieceType.Kind.BOW,
+	]
+	var k: int = kinds[randi() % kinds.size()]
+	return Emblem.new(k, 1)
 
 func _recheck_player_input() -> void:
 	if state == State.ENDED:

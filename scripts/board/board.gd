@@ -8,8 +8,8 @@ signal invalid_swap
 signal shuffle_started
 signal shuffle_finished
 
-const ROWS := 9
-const COLS := 9
+const ROWS := 5
+const COLS := 5
 const CELL: float = Piece.SIZE
 const SPACING: float = 4.0
 const MAX_CASCADE_DEPTH := 20

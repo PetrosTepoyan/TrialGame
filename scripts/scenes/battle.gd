@@ -19,6 +19,7 @@ extends Control
 @onready var _exit_button: Button = $TopBar/ExitButton
 @onready var _floating_text_root: Node2D = $FloatingTextRoot
 @onready var _action_scale: ActionScale = $ActionScaleBar/ActionScale
+@onready var _enemy_action_scale: ActionScale = $BattleScene/EnemyActionScale
 @onready var _shield_popup: CanvasLayer = $ShieldChoiceLayer
 @onready var _shield_armor_btn: Button = $ShieldChoiceLayer/ShieldChoicePopup/VBox/Buttons/ArmorBtn
 @onready var _shield_stun_btn: Button = $ShieldChoiceLayer/ShieldChoicePopup/VBox/Buttons/StunBtn
@@ -60,6 +61,9 @@ func _ready() -> void:
 	_combat.emblem_added.connect(_on_emblem_added)
 	_combat.round_executing.connect(_on_round_executing)
 	_combat.round_finished.connect(_on_round_finished)
+	_combat.enemy_emblem_added.connect(_on_enemy_emblem_added)
+	_combat.enemy_round_executing.connect(_on_enemy_round_executing)
+	_combat.enemy_round_finished.connect(_on_enemy_round_finished)
 	_combat.shield_choice_required.connect(_on_shield_choice_required)
 	_combat.battle_won.connect(_on_battle_won)
 	_combat.battle_lost.connect(_on_battle_lost)
@@ -104,9 +108,15 @@ func _on_round_executing(_emblems: Array) -> void:
 
 func _on_round_finished() -> void:
 	_action_scale.clear_all()
-	# Repopulate any overflow emblems that carried into the new round.
-	for i in range(_combat.action_scale.size()):
-		_action_scale.fill_slot(i, _combat.action_scale[i])
+
+func _on_enemy_emblem_added(emblem: Emblem, scale_size: int) -> void:
+	_enemy_action_scale.fill_slot(scale_size - 1, emblem)
+
+func _on_enemy_round_executing(_emblems: Array) -> void:
+	_enemy_action_scale.play_execute_animation()
+
+func _on_enemy_round_finished() -> void:
+	_enemy_action_scale.clear_all()
 
 func _on_damage_dealt(target_is_player: bool, amount: int, _source_kind: int) -> void:
 	var attacker_battle: BattleActor = _enemy_battle_actor if target_is_player else _player_battle_actor

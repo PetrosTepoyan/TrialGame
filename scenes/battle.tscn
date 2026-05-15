@@ -234,6 +234,16 @@ is_player = false
 body_color = Color(0.85, 0.52, 0.42, 1)
 actor_label = "Enemy"
 
+[node name="EnemyActionScale" type="HBoxContainer" parent="BattleScene"]
+offset_left = 48.0
+offset_top = -200.0
+offset_right = 252.0
+offset_bottom = -164.0
+mouse_filter = 2
+script = ExtResource("8_scale")
+slot_size = 36.0
+separation = 6
+
 [node name="BoardArea" type="Control" parent="."]
 anchor_top = 1.0
 anchor_right = 1.0
