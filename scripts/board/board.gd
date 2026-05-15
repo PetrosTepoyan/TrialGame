@@ -176,6 +176,7 @@ func request_swap(a: Vector2i, b: Vector2i) -> bool:
 		return false
 	state = State.SWAPPING
 	AudioBus.play_swap()
+	Haptics.medium_tap()
 	_do_swap(a, b, true)
 	return true
 
@@ -198,6 +199,7 @@ func _do_swap(a: Vector2i, b: Vector2i, check_match: bool) -> void:
 		if groups.is_empty():
 			await _do_swap(b, a, false)
 			AudioBus.play_invalid()
+			Haptics.warning()
 			emit_signal("invalid_swap")
 			return
 		state = State.RESOLVING
@@ -232,6 +234,7 @@ func _resolve_cascade() -> void:
 			var cells: Array = g["cells"]
 			var longest: int = MatchDetector.longest_axis_run_in(cells, kind_grid)
 			emit_signal("match_resolved", k, cells.size(), longest)
+			Haptics.light_tap()
 		AudioBus.play_match()
 		var all_removed: Dictionary = {}
 		for g in groups:
@@ -328,6 +331,7 @@ func tap_select(bp: Vector2i) -> void:
 		var p: Piece = grid[bp.y][bp.x]
 		if p != null:
 			p.set_selected(true)
+		Haptics.light_tap()
 		return
 	if _selected_cell == bp:
 		_clear_selection()

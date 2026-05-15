@@ -6,6 +6,10 @@ extends Control
 
 func _ready() -> void:
 	SafeArea.apply(self)
-	_continue.pressed.connect(SceneRouter.goto_chapter_map)
+	_continue.pressed.connect(_on_continue_pressed)
 	_label.text = "Castle Conquered"
 	_detail.text = "%s falls. You ride to the next stronghold." % GameState.current_castle.castle_name
+
+func _on_continue_pressed() -> void:
+	Haptics.light_tap()
+	SceneRouter.goto_chapter_map()

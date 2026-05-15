@@ -5,5 +5,13 @@ extends Control
 
 func _ready() -> void:
 	SafeArea.apply(self)
-	_retry.pressed.connect(SceneRouter.goto_battle)
-	_back.pressed.connect(SceneRouter.goto_chapter_map)
+	_retry.pressed.connect(_on_retry_pressed)
+	_back.pressed.connect(_on_back_pressed)
+
+func _on_retry_pressed() -> void:
+	Haptics.medium_tap()
+	SceneRouter.goto_battle()
+
+func _on_back_pressed() -> void:
+	Haptics.light_tap()
+	SceneRouter.goto_chapter_map()

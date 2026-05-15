@@ -17,6 +17,7 @@ func show_once() -> void:
 	visible = true
 
 func _on_dismiss() -> void:
+	Haptics.light_tap()
 	GameState.mark_tutorial_seen()
 	visible = false
 	emit_signal("dismissed")

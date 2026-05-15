@@ -85,13 +85,17 @@ func _fade_in_flavor() -> void:
 	t.tween_property(_flavor, "modulate:a", 1.0, 0.8).set_trans(Tween.TRANS_SINE)
 
 func _on_play_pressed() -> void:
+	Haptics.light_tap()
 	SceneRouter.goto_chapter_map()
 
 func _on_reset_pressed() -> void:
+	Haptics.light_tap()
 	GameState.reset_save()
 
 func _on_quit_pressed() -> void:
+	Haptics.light_tap()
 	get_tree().quit()
 
 func _on_settings_pressed() -> void:
+	Haptics.light_tap()
 	_settings_panel.visible = true
