@@ -149,8 +149,18 @@ func _build_mini_hud() -> void:
 	add_child(_mini_hud)
 	if _mini_hud.has_method("set_overlay"):
 		_mini_hud.set_overlay(self)
+	set_mini_hud_visible(bool(get_override("hud.mini_visible", true)))
 
 
 func _refresh_mini_hud() -> void:
 	if _mini_hud and _mini_hud.has_method("refresh"):
 		_mini_hud.refresh()
+
+
+func set_mini_hud_visible(state: bool) -> void:
+	if _mini_hud == null:
+		return
+	if _mini_hud.has_method("set_hud_enabled"):
+		_mini_hud.call("set_hud_enabled", state)
+	else:
+		_mini_hud.visible = state

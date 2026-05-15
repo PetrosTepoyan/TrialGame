@@ -119,6 +119,21 @@ func _build_stats_tab() -> ScrollContainer:
 	_stats_label.text = "..."
 	_stats_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	vbox.add_child(_stats_label)
+
+	vbox.add_child(_section_header("Mini HUD"))
+	var hud_toggle := CheckBox.new()
+	hud_toggle.text = "Show top-right FPS"
+	hud_toggle.custom_minimum_size = Vector2(0, 44)
+	hud_toggle.button_pressed = true
+	if _overlay:
+		hud_toggle.button_pressed = bool(_overlay.get_override("hud.mini_visible", true))
+	hud_toggle.toggled.connect(func(state: bool) -> void:
+		if _overlay:
+			_overlay.set_override("hud.mini_visible", state)
+			if _overlay.has_method("set_mini_hud_visible"):
+				_overlay.call("set_mini_hud_visible", state)
+	)
+	vbox.add_child(hud_toggle)
 	return scroll
 
 
@@ -276,7 +291,7 @@ func _progression_text(gs: Node) -> String:
 	if gs == null:
 		return "GameState autoload not present"
 	var parts: Array[String] = []
-	for key in ["castle", "chapter", "level", "current_castle", "current_chapter", "current_level"]:
+	for key in ["castle_index", "chapter_index", "level_index", "castle", "chapter", "level"]:
 		if key in gs:
 			parts.append("%s = %s" % [key, str(gs.get(key))])
 	if parts.is_empty():
@@ -423,15 +438,32 @@ func _build_stats_text() -> String:
 		var enemy := _get_actor_from_cc(cc, "enemy")
 		if player:
 			lines.append("Player HP: %s / %s" % [str(_get_actor_hp(player)), str(_get_actor_max_hp(player))])
-			lines.append("Player scale size: %s" % str(_get_actor_scale_size(player)))
 		if enemy:
 			lines.append("Enemy HP: %s / %s" % [str(_get_actor_hp(enemy)), str(_get_actor_max_hp(enemy))])
-			lines.append("Enemy scale size: %s" % str(_get_actor_scale_size(enemy)))
-		if "round" in cc:
-			lines.append("Round: %s" % str(cc.get("round")))
-		elif "round_count" in cc:
-			lines.append("Round: %s" % str(cc.get("round_count")))
+		# action_scale lives on the controller in this codebase.
+		if "action_scale" in cc:
+			var p_scale_v: Variant = cc.get("action_scale")
+			if p_scale_v is Array:
+				lines.append("Player scale: %d / %s" % [(p_scale_v as Array).size(), str(_get_const(cc, "SCALE_CAPACITY", 5))])
+		if "enemy_action_scale" in cc:
+			var e_scale_v: Variant = cc.get("enemy_action_scale")
+			if e_scale_v is Array:
+				lines.append("Enemy scale: %d / %s" % [(e_scale_v as Array).size(), str(_get_const(cc, "SCALE_CAPACITY", 5))])
+		if "_player_round_count" in cc:
+			lines.append("Player rounds: %s" % str(cc.get("_player_round_count")))
+		if "_enemy_round_count" in cc:
+			lines.append("Enemy rounds: %s" % str(cc.get("_enemy_round_count")))
 	return "\n".join(lines)
+
+
+func _get_const(n: Node, key: String, default_v: Variant) -> Variant:
+	var s: Script = n.get_script()
+	if s == null:
+		return default_v
+	var consts: Dictionary = s.get_script_constant_map()
+	if consts.has(key):
+		return consts[key]
+	return default_v
 
 
 func _apply_cheats() -> void:
@@ -520,7 +552,7 @@ func _get_actor_from_cc(cc: Node, side: String) -> Node:
 
 
 func _get_actor_hp(actor: Node) -> int:
-	for k in ["hp", "health", "current_hp"]:
+	for k in ["current_hp", "hp", "health"]:
 		if k in actor:
 			return int(actor.get(k))
 	return -1
@@ -579,10 +611,15 @@ func _on_heal_player() -> void:
 	if p == null:
 		return
 	var max_hp := _get_actor_max_hp(p)
+	if p.has_method("heal") and max_hp > 0:
+		p.call("heal", max_hp)
+		return
 	if max_hp > 0:
-		for k in ["hp", "health", "current_hp"]:
+		for k in ["current_hp", "hp", "health"]:
 			if k in p:
 				p.set(k, max_hp)
+				if p.has_signal("hp_changed"):
+					p.emit_signal("hp_changed", max_hp, max_hp)
 				break
 
 
@@ -593,14 +630,21 @@ func _on_kill_enemy() -> void:
 	var e := _get_actor_from_cc(cc, "enemy")
 	if e == null:
 		return
-	for k in ["hp", "health", "current_hp"]:
-		if k in e:
-			e.set(k, 0)
-			break
+	if e.has_method("apply_damage"):
+		e.call("apply_damage", 99999, false)
+		return
 	if e.has_method("take_damage"):
 		e.call("take_damage", 99999)
-	elif cc.has_method("apply_damage_to_enemy"):
-		cc.call("apply_damage_to_enemy", 99999)
+		return
+	for k in ["current_hp", "hp", "health"]:
+		if k in e:
+			e.set(k, 0)
+			if e.has_signal("hp_changed"):
+				var max_hp := _get_actor_max_hp(e)
+				e.emit_signal("hp_changed", 0, max_hp)
+			if e.has_signal("died"):
+				e.emit_signal("died", e)
+			break
 
 
 func _on_stun_enemy() -> void:
@@ -610,28 +654,57 @@ func _on_stun_enemy() -> void:
 	var e := _get_actor_from_cc(cc, "enemy")
 	if e == null:
 		return
+	# Prefer the StatusEffect resource path.
+	var StatusEffectScript: Script = load("res://scripts/resources/status_effect.gd")
+	if StatusEffectScript and e.has_method("apply_effect"):
+		var consts: Dictionary = StatusEffectScript.get_script_constant_map()
+		var kind_enum: Variant = consts.get("Kind", null)
+		if typeof(kind_enum) == TYPE_DICTIONARY:
+			var k: Dictionary = kind_enum
+			if k.has("STUN"):
+				var fx: Object = StatusEffectScript.new(k["STUN"], 99, 0, 0)
+				e.call("apply_effect", fx)
+				return
+	# Fallbacks.
 	if e.has_method("apply_stun"):
 		e.call("apply_stun", 99)
 	elif "stun_rounds" in e:
 		e.set("stun_rounds", 99)
-	elif "stunned_for" in e:
-		e.set("stunned_for", 99)
 
 
 func _on_fill_scale() -> void:
 	var cc := _find_combat_controller()
 	if cc == null:
 		return
-	var e := _get_actor_from_cc(cc, "enemy")
-	if e:
-		_fill_actor_scale(e)
+	# Push 5 emblems directly into the controller's enemy_action_scale.
+	if not ("enemy_action_scale" in cc):
+		return
+	var arr_v: Variant = cc.get("enemy_action_scale")
+	if not (arr_v is Array):
+		return
+	var arr: Array = arr_v
+	var cap: int = int(_get_const(cc, "SCALE_CAPACITY", 5))
+	var EmblemScript: Script = load("res://scripts/resources/emblem.gd")
+	# Pick any piece kind.
+	var kind_value: int = 0
+	while arr.size() < cap:
+		var fake_emblem: Variant = null
+		if EmblemScript:
+			# Try various constructors gracefully.
+			fake_emblem = EmblemScript.new()
+			if "kind" in fake_emblem:
+				fake_emblem.set("kind", kind_value)
+		arr.append(fake_emblem)
+		if cc.has_signal("enemy_emblem_added"):
+			cc.emit_signal("enemy_emblem_added", fake_emblem, arr.size())
+	cc.set("enemy_action_scale", arr)
 
 
 func _on_reshuffle() -> void:
 	var board := _find_board()
 	if board == null:
 		return
-	for m in ["reshuffle", "force_reshuffle", "shuffle"]:
+	for m in ["force_reshuffle", "reshuffle", "shuffle", "shuffle_board_if_dead", "populate_new_board"]:
 		if board.has_method(m):
 			board.call(m)
 			return
@@ -670,12 +743,19 @@ func _play_audio(method: String, args: Array = []) -> void:
 
 func _on_skip_level() -> void:
 	var gs: Node = get_node_or_null("/root/GameState")
-	if gs and gs.has_method("skip_level"):
-		gs.call("skip_level")
-		return
-	var router: Node = get_node_or_null("/root/SceneRouter")
-	if router and router.has_method("go_to_victory"):
-		router.call("go_to_victory")
+	if gs:
+		# Mark current level completed before jumping.
+		if gs.has_method("mark_level_completed") and ("castle_index" in gs) and ("chapter_index" in gs) and ("level_index" in gs):
+			gs.call(
+				"mark_level_completed",
+				int(gs.get("castle_index")),
+				int(gs.get("chapter_index")),
+				int(gs.get("level_index"))
+			)
+		if gs.has_method("skip_level"):
+			gs.call("skip_level")
+			return
+	_on_goto_victory()
 
 
 func _on_reset_save() -> void:
@@ -686,27 +766,42 @@ func _on_reset_save() -> void:
 		if gs.has_method(m):
 			gs.call(m)
 			return
+	# Manual fallback: delete the save file and reset indexes.
+	if FileAccess.file_exists("user://savegame.json"):
+		DirAccess.remove_absolute("user://savegame.json")
+	if "castle_index" in gs:
+		gs.set("castle_index", 0)
+	if "chapter_index" in gs:
+		gs.set("chapter_index", 0)
+	if "level_index" in gs:
+		gs.set("level_index", 0)
+	if "completed_levels" in gs:
+		gs.set("completed_levels", {})
 
 
 func _on_goto_victory() -> void:
 	var router: Node = get_node_or_null("/root/SceneRouter")
 	if router == null:
 		return
-	for m in ["go_to_victory", "to_victory", "goto_victory"]:
+	if _overlay:
+		_overlay.close_menu()
+	for m in ["goto_victory", "go_to_victory", "to_victory"]:
 		if router.has_method(m):
 			router.call(m)
 			return
-	if router.has_method("change_scene"):
-		router.call("change_scene", "res://scenes/ui/victory.tscn")
+	if router.has_method("goto"):
+		router.call("goto", "res://scenes/ui/victory.tscn")
 
 
 func _on_goto_gameover() -> void:
 	var router: Node = get_node_or_null("/root/SceneRouter")
 	if router == null:
 		return
-	for m in ["go_to_game_over", "to_game_over", "goto_game_over"]:
+	if _overlay:
+		_overlay.close_menu()
+	for m in ["goto_game_over", "go_to_game_over", "to_game_over"]:
 		if router.has_method(m):
 			router.call(m)
 			return
-	if router.has_method("change_scene"):
-		router.call("change_scene", "res://scenes/ui/game_over.tscn")
+	if router.has_method("goto"):
+		router.call("goto", "res://scenes/ui/game_over.tscn")
