@@ -190,8 +190,16 @@ func _do_swap(a: Vector2i, b: Vector2i, check_match: bool) -> void:
 	grid[b.y][b.x] = pa
 	pa.board_pos = b
 	pb.board_pos = a
-	var t1 := pa.tween_to(board_pos_to_world(b))
-	var t2 := pb.tween_to(board_pos_to_world(a))
+	var from_a: Vector2 = pa.position
+	var from_b: Vector2 = pb.position
+	var to_a: Vector2 = board_pos_to_world(b)
+	var to_b: Vector2 = board_pos_to_world(a)
+	# Subtle trail on the forward swap only; the revert (check_match == false)
+	# stays quiet so invalid swaps don't double-flash.
+	if check_match:
+		SwapTrail.spawn(from_a, to_a, piece_types[pa.kind].color, from_b, to_b, piece_types[pb.kind].color, _piece_layer)
+	var t1 := pa.tween_to(to_a)
+	var t2 := pb.tween_to(to_b)
 	await t1.finished
 	await t2.finished
 	if check_match:
@@ -229,12 +237,20 @@ func _resolve_cascade() -> void:
 			break
 		total += groups.size()
 		var kind_grid := _kind_snapshot()
+		# Build per-cell metadata so each piece's burst is sized to the run it
+		# belongs to. If a cell sits in more than one group (intersections),
+		# the larger run wins.
+		var cell_run: Dictionary = {}
 		for g in groups:
 			var k: int = g["kind"]
 			var cells: Array = g["cells"]
 			var longest: int = MatchDetector.longest_axis_run_in(cells, kind_grid)
 			emit_signal("match_resolved", k, cells.size(), longest)
 			Haptics.light_tap()
+			for cell_v in cells:
+				var prev: int = int(cell_run.get(cell_v, 0))
+				if longest > prev:
+					cell_run[cell_v] = longest
 		AudioBus.play_match(groups.map(func(g): return MatchDetector.longest_axis_run_in(g["cells"], kind_grid)).max())
 		var all_removed: Dictionary = {}
 		for g in groups:
@@ -249,7 +265,8 @@ func _resolve_cascade() -> void:
 				remove_tweens.append(p.tween_remove())
 				pieces_to_free.append(p)
 				grid[cell.y][cell.x] = null
-				MatchParticles.spawn(p.position, piece_types[p.kind].color, _piece_layer)
+				var run_len: int = int(cell_run.get(cell, 3))
+				MatchParticles.spawn(p.position, piece_types[p.kind].color, _piece_layer, p.kind, run_len)
 		if not remove_tweens.is_empty():
 			await remove_tweens[remove_tweens.size() - 1].finished
 		for p in pieces_to_free:

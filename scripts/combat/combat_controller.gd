@@ -121,6 +121,7 @@ func _execute_round() -> void:
 	AudioBus.play_round_execute()
 	AudioBus.duck_music_briefly()
 	Haptics.heavy_tap()
+	_spawn_round_execute_burst()
 	var combo_level: int = _detect_round_combo_level(action_scale)
 	if combo_level > 0:
 		AudioBus.play_combo(combo_level)
@@ -164,6 +165,37 @@ func _has_combo(emblems: Array) -> bool:
 		if counts[key] >= 3:
 			return true
 	return false
+
+func _spawn_round_execute_burst() -> void:
+	# Drop a RoundExecuteBurst into the scene at a sensible screen-space center
+	# so the VFX reads even though CombatController is a logic-only Node. The
+	# battle scene parents Combat directly — we attach the burst there.
+	var parent_node: Node = get_parent()
+	if parent_node == null:
+		return
+	var viewport_size: Vector2 = Vector2(1080, 1920)
+	var tree := get_tree()
+	if tree != null and tree.root != null:
+		viewport_size = tree.root.get_visible_rect().size
+	# Center the burst horizontally; vertically it sits near the action scale
+	# strip — battle.tscn places PlayerActionScale around y=444. That keeps the
+	# ring expanding from the scale itself.
+	var center: Vector2 = Vector2(viewport_size.x * 0.5, 480.0)
+	var colors: Array = []
+	for e_v in action_scale:
+		var e: Emblem = e_v
+		colors.append(_kind_to_color(e.piece_kind))
+	RoundExecuteBurst.spawn(center, viewport_size, colors, parent_node)
+
+func _kind_to_color(kind: int) -> Color:
+	if board != null and board.piece_types.size() > kind and kind >= 0:
+		return board.piece_types[kind].color
+	match kind:
+		PieceType.Kind.SWORD: return Color(0.95, 0.78, 0.30)
+		PieceType.Kind.SHIELD: return Color(0.40, 0.62, 0.95)
+		PieceType.Kind.STAFF: return Color(0.66, 0.36, 0.85)
+		PieceType.Kind.BOW: return Color(0.40, 0.82, 0.50)
+	return Color.WHITE
 
 func _detect_shield_combo_level(emblems: Array) -> int:
 	var counts := {1: 0, 2: 0, 3: 0}
