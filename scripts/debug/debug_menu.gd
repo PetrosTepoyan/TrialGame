@@ -126,7 +126,8 @@ func _build_stats_tab() -> ScrollContainer:
 	hud_toggle.custom_minimum_size = Vector2(0, 44)
 	hud_toggle.button_pressed = true
 	if _overlay:
-		hud_toggle.button_pressed = bool(_overlay.get_override("hud.mini_visible", true))
+		var hud_pref = _overlay.get_override("hud.mini_visible", true)
+		hud_toggle.button_pressed = (hud_pref == true or hud_pref == null)
 	hud_toggle.toggled.connect(func(state: bool) -> void:
 		if _overlay:
 			_overlay.set_override("hud.mini_visible", state)
@@ -241,9 +242,14 @@ func _build_haptics_tab() -> ScrollContainer:
 	# Best-effort feature detect.
 	var enabled: bool = true
 	if "enabled" in haptics:
-		enabled = bool(haptics.get("enabled"))
+		var v_enabled = haptics.get("enabled")
+		enabled = (v_enabled == true)
 	elif haptics.has_method("is_enabled"):
-		enabled = bool(haptics.call("is_enabled"))
+		var v_enabled = haptics.call("is_enabled")
+		enabled = (v_enabled == true)
+	elif haptics.has_method("enabled"):
+		var v_enabled = haptics.call("enabled")
+		enabled = (v_enabled == true)
 	toggle.button_pressed = enabled
 	toggle.toggled.connect(func(state: bool) -> void:
 		if "enabled" in haptics:

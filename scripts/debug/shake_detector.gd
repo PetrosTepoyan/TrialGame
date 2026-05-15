@@ -25,10 +25,14 @@ func _ready() -> void:
 
 func _process(_delta: float) -> void:
 	var accel: Vector3 = Input.get_accelerometer()
-	# Subtract gravity (~9.8 along some axis); we approximate by taking magnitude
-	# of acceleration minus the static gravity baseline. Many iOS devices report
-	# raw accelerometer including gravity; use shifted magnitude.
 	var magnitude: float = accel.length()
+	# Platforms without an accelerometer (macOS editor, desktop, headless) report
+	# Vector3.ZERO — treat that as "no signal" rather than as a constant 9.8-m/s²
+	# spike against a gravity baseline.
+	if magnitude < 0.1:
+		_spike_history.pop_front()
+		_spike_history.append(false)
+		return
 	# Subtract a rough gravity baseline so a still device reads ~0.
 	var shifted: float = absf(magnitude - 9.8)
 	var is_spike: bool = shifted > SHAKE_THRESHOLD
