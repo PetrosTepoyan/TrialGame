@@ -17,10 +17,10 @@ func _ready() -> void:
 	_sprite.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	_sprite.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	_sprite.set_anchors_preset(Control.PRESET_FULL_RECT)
-	_sprite.offset_left = 8.0
-	_sprite.offset_top = 8.0
-	_sprite.offset_right = -8.0
-	_sprite.offset_bottom = -12.0
+	_sprite.offset_left = 2.0
+	_sprite.offset_top = 2.0
+	_sprite.offset_right = -2.0
+	_sprite.offset_bottom = -8.0
 	_sprite.visible = false
 	_sprite.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_sprite)
@@ -71,16 +71,17 @@ func _draw() -> void:
 		return
 	var col := _emblem_color(_emblem.piece_kind)
 	# Inset color block (kept as a tint band behind the sprite)
-	draw_rect(rect.grow(-6), col.darkened(0.35), true)
+	draw_rect(rect.grow(-3), col.darkened(0.35), true)
 	# Mini icon (programmatic fallback when no sprite is loaded)
 	if _sprite == null or not _sprite.visible:
 		_draw_mini_icon(_emblem.piece_kind)
-	# Level pip(s) in corner
+	# Level pip(s) along the bottom edge — placed below the sprite area so they
+	# remain visible at any sprite size.
 	var level := _emblem.level
 	var dot_color := Color(1.0, 0.92, 0.50, 1)
 	for i in range(level):
-		var p := Vector2(size.x - 8 - i * 7, size.y - 8)
-		draw_circle(p, 3.0, dot_color)
+		var p := Vector2(size.x - 6 - i * 6, size.y - 3)
+		draw_circle(p, 2.2, dot_color)
 	if _flash_alpha > 0.0:
 		draw_rect(rect, Color(1, 1, 1, _flash_alpha * 0.5), true)
 

@@ -1,17 +1,15 @@
 class_name CombatController
 extends Node
 
-# Round-based combat:
-#   1. Player matches accumulate Emblems on an action scale (capacity 5).
-#   2. When the scale fills, the round executes:
-#      - emblems resolve through AbilityResolver
-#      - shield 3-combo prompts the player to pick STUN or ARMOR
-#      - effects apply (damage, heal, armor, status effects)
-#      - existing DoTs/stuns tick on both actors
-#      - enemy attacks once (skipped while stunned)
-#   3. Scale resets to empty. Any cascaded matches beyond the 5th emblem
-#      BURN — they don't carry into the next round. Player must earn the next
-#      5 emblems from scratch.
+# Real-time action-scale combat:
+#   - Player matches accumulate emblems on the hero's action scale (capacity 5).
+#     When it fills, the round resolves via AbilityResolver against the enemy.
+#   - The enemy fills its own action scale independently at 1 emblem / second.
+#     Emblems are drawn from a simulated 5x5 board so combos are naturally
+#     rarer than what the hero gets from the 9x9. When the enemy scale fills it
+#     applies its abilities to the hero and resets.
+#   - Enemy resolves wait for the player's round to finish if one is in flight,
+#     so effects never interleave mid-resolve.
 
 signal turn_changed(is_player_turn: bool)
 signal damage_dealt(target_is_player: bool, amount: int, source_kind: int)
@@ -26,13 +24,13 @@ signal enemy_round_finished
 signal shield_choice_required(combo_level: int)
 signal battle_won
 signal battle_lost
-signal enemy_special_attack
 signal enemy_stunned_skipped
 
-enum State { PLAYER_INPUT, RESOLVING, ENEMY_TURN, ENDED }
+enum State { PLAYER_INPUT, RESOLVING, ENDED }
 
 const SCALE_CAPACITY: int = 5
-const ENEMY_SCALE_CAPACITY: int = 5
+const ENEMY_TICK_SECONDS: float = 1.0
+const ENEMY_SIM_BOARD_SIZE: int = 5
 
 @export var board_path: NodePath
 @export var player_actor_path: NodePath
@@ -45,11 +43,19 @@ const ENEMY_SCALE_CAPACITY: int = 5
 
 var state: int = State.PLAYER_INPUT
 var action_scale: Array = []            # Array[Emblem]
-var enemy_action_scale: Array = []      # Array[Emblem] — fills 1 per round; fires at 5
+var _overflow_emblems: Array = []       # Emblems collected while a round is mid-execution
 var _player_round_count: int = 0
+var _enemy_round_count: int = 0
 var _pending_shield_choice: int = -1
+var _player_round_in_flight: bool = false
+var _enemy_round_in_flight: bool = false
+
+var enemy_action_scale: Array = []      # Array[Emblem]
+var _enemy_tick_timer: Timer = null
+var _enemy_rng := RandomNumberGenerator.new()
 
 func _ready() -> void:
+	_enemy_rng.randomize()
 	if level == null:
 		level = GameState.get_current_level()
 	_apply_level_stats()
@@ -60,6 +66,13 @@ func _ready() -> void:
 	enemy.died.connect(_on_enemy_died)
 	state = State.PLAYER_INPUT
 	emit_signal("turn_changed", true)
+	_enemy_tick_timer = Timer.new()
+	_enemy_tick_timer.wait_time = ENEMY_TICK_SECONDS
+	_enemy_tick_timer.one_shot = false
+	_enemy_tick_timer.autostart = false
+	add_child(_enemy_tick_timer)
+	_enemy_tick_timer.timeout.connect(_on_enemy_tick)
+	_enemy_tick_timer.start()
 
 func _apply_level_stats() -> void:
 	player.is_player = true
@@ -79,12 +92,11 @@ func _on_match_resolved(kind: int, _count: int, longest_run: int) -> void:
 		return
 	var lvl: int = PieceType.level_from_match(longest_run)
 	var e := Emblem.new(kind, lvl)
-	# Scale is capped at 5. Extra emblems from cascades burn — the player has
-	# to earn the next 5 from scratch after a round fires.
 	if action_scale.size() >= SCALE_CAPACITY:
-		return
-	action_scale.append(e)
-	emit_signal("emblem_added", e, action_scale.size())
+		_overflow_emblems.append(e)
+	else:
+		action_scale.append(e)
+		emit_signal("emblem_added", e, action_scale.size())
 
 func _on_cascade_finished(_total: int, _depth: int) -> void:
 	if state == State.ENDED:
@@ -96,56 +108,27 @@ func _on_cascade_finished(_total: int, _depth: int) -> void:
 		_recheck_player_input()
 
 func _on_invalid_swap() -> void:
-	# Bad swap doesn't fill the scale; doesn't end the round either (player
-	# explicitly needs 5 matches to act). They lose a swap attempt but no turn
-	# penalty in the new model.
 	pass
 
-# --- Round execution ---
+# --- Player round execution ---
 
 func _execute_round() -> void:
+	_player_round_in_flight = true
 	state = State.RESOLVING
 	board.set_input_locked(true)
 	emit_signal("turn_changed", false)
 	emit_signal("round_executing", action_scale.duplicate())
 	AudioBus.play_round_execute()
 	var shield_choice: int = AbilityResolver.SHIELD_CHOICE_ARMOR
-	var shield_combo_level: int = _detect_shield_combo_level()
+	var shield_combo_level: int = _detect_shield_combo_level(action_scale)
 	if shield_combo_level > 0:
 		shield_choice = await _await_shield_choice(shield_combo_level)
 	var result: Dictionary = AbilityResolver.resolve_round(board.piece_types, action_scale, shield_choice)
-	# Apply pierce + damage + heal + armor + status effects.
-	await _apply_round_result(result)
+	await _apply_player_round_result(result)
 	if state == State.ENDED:
+		_player_round_in_flight = false
 		return
-	# Enemy turn — symmetric to the player. The enemy gains 1 emblem per round.
-	# When its scale fills, it unleashes a single 5-emblem attack (5× base
-	# damage). Stun skips emblem gain AND attack — checked BEFORE ticking so
-	# the duration counts as the number of rounds the enemy actually loses.
-	var enemy_was_stunned: bool = enemy.is_stunned()
-	if enemy_was_stunned:
-		emit_signal("enemy_stunned_skipped")
-	else:
-		# Charge: enemy gains 1 emblem this round (visible buildup).
-		if enemy_action_scale.size() < ENEMY_SCALE_CAPACITY:
-			var enemy_emblem := _generate_enemy_emblem()
-			enemy_action_scale.append(enemy_emblem)
-			emit_signal("enemy_emblem_added", enemy_emblem, enemy_action_scale.size())
-			await get_tree().create_timer(0.30).timeout
-		# Fire: if the scale just filled, the enemy attacks now and resets.
-		if enemy_action_scale.size() >= ENEMY_SCALE_CAPACITY:
-			state = State.ENEMY_TURN
-			emit_signal("turn_changed", false)
-			emit_signal("enemy_round_executing", enemy_action_scale.duplicate())
-			await get_tree().create_timer(0.45).timeout
-			if state == State.ENDED:
-				return
-			_do_enemy_attack()
-			await get_tree().create_timer(0.45).timeout
-			enemy_action_scale = []
-			emit_signal("enemy_round_finished")
-	# Tick DoTs and decrement effect durations now that the round resolved.
-	# DoTs apply their damage and stun/debuff counters advance.
+	# Tick DoTs/stun counters once per resolved player round.
 	var enemy_dot: int = enemy.tick_effects()
 	if enemy_dot > 0:
 		emit_signal("damage_dealt", false, enemy_dot, -1)
@@ -153,16 +136,19 @@ func _execute_round() -> void:
 	if player_dot > 0:
 		emit_signal("damage_dealt", true, player_dot, -1)
 	if state == State.ENDED:
+		_player_round_in_flight = false
 		return
-	# Reset scale to empty — overflow emblems collected mid-round are discarded.
-	action_scale = []
+	# Reset scale, accept any overflow emblems collected mid-round.
+	action_scale = _overflow_emblems
+	_overflow_emblems = []
 	_player_round_count += 1
 	emit_signal("round_finished")
+	_player_round_in_flight = false
 	_recheck_player_input()
 
-func _detect_shield_combo_level() -> int:
+func _detect_shield_combo_level(emblems: Array) -> int:
 	var counts := {1: 0, 2: 0, 3: 0}
-	for e_v in action_scale:
+	for e_v in emblems:
 		var e: Emblem = e_v
 		if e.piece_kind == PieceType.Kind.SHIELD and counts.has(e.level):
 			counts[e.level] += 1
@@ -183,7 +169,8 @@ func _await_shield_choice(combo_level: int) -> int:
 func provide_shield_choice(choice: int) -> void:
 	_pending_shield_choice = choice
 
-func _apply_round_result(result: Dictionary) -> void:
+func _apply_player_round_result(result: Dictionary) -> void:
+	# Player as caster; enemy as target.
 	var damage: int = int(result.get("damage", 0))
 	var bypass: int = int(result.get("bypass", 0))
 	var pierce: int = int(result.get("pierce", 0))
@@ -209,37 +196,6 @@ func _apply_round_result(result: Dictionary) -> void:
 		emit_signal("status_applied", true, fx)
 	await get_tree().create_timer(0.25).timeout
 
-func _do_enemy_attack() -> void:
-	# Called when the enemy's action scale fills. Damage scales with the
-	# capacity so average DPR matches the old "attack every round" model
-	# (1× per round → 5× every 5 rounds).
-	var dmg: int = enemy.base_damage * ENEMY_SCALE_CAPACITY
-	if level != null and level.boss_modifier != null:
-		var hp_frac: float = float(enemy.current_hp) / float(max(1, enemy.max_hp))
-		if hp_frac <= level.boss_modifier.enrage_threshold:
-			dmg = int(dmg * level.boss_modifier.enrage_multiplier)
-		var n: int = level.boss_modifier.special_attack_every_n_turns
-		if n > 0 and (_player_round_count + 1) % n == 0:
-			dmg += level.boss_modifier.special_attack_damage
-			emit_signal("enemy_special_attack")
-	var dealt: int = player.take_damage(dmg, false)
-	if dealt > 0:
-		AudioBus.play_hit()
-	emit_signal("damage_dealt", true, dealt, -1)
-	enemy.attacked.emit()
-
-func _generate_enemy_emblem() -> Emblem:
-	# The kind is purely cosmetic — the actual damage comes from base_damage
-	# × capacity. Random kind keeps the bar visually varied.
-	var kinds: Array = [
-		PieceType.Kind.SWORD,
-		PieceType.Kind.SHIELD,
-		PieceType.Kind.STAFF,
-		PieceType.Kind.BOW,
-	]
-	var k: int = kinds[randi() % kinds.size()]
-	return Emblem.new(k, 1)
-
 func _recheck_player_input() -> void:
 	if state == State.ENDED:
 		return
@@ -249,14 +205,129 @@ func _recheck_player_input() -> void:
 	if board.state == Board.State.IDLE:
 		board.shuffle_board_if_dead()
 
+# --- Enemy independent action-scale loop ---
+
+func _on_enemy_tick() -> void:
+	if state == State.ENDED:
+		return
+	# Stunned enemy doesn't accumulate emblems; the stun still ticks down each
+	# player round, so it self-clears.
+	if enemy.is_stunned():
+		return
+	# Don't accumulate further while an enemy resolve is already in flight.
+	if _enemy_round_in_flight:
+		return
+	if enemy_action_scale.size() >= SCALE_CAPACITY:
+		return
+	var e: Emblem = _generate_enemy_emblem()
+	enemy_action_scale.append(e)
+	emit_signal("enemy_emblem_added", e, enemy_action_scale.size())
+	if enemy_action_scale.size() >= SCALE_CAPACITY:
+		_execute_enemy_round()
+
+func _execute_enemy_round() -> void:
+	_enemy_round_in_flight = true
+	# Wait for any in-flight player round to finish so effects don't interleave.
+	while _player_round_in_flight and state != State.ENDED:
+		await get_tree().process_frame
+	if state == State.ENDED:
+		_enemy_round_in_flight = false
+		return
+	if enemy.is_stunned():
+		emit_signal("enemy_stunned_skipped")
+		enemy_action_scale.clear()
+		emit_signal("enemy_round_finished")
+		_enemy_round_in_flight = false
+		return
+	emit_signal("enemy_round_executing", enemy_action_scale.duplicate())
+	AudioBus.play_round_execute()
+	# Enemy never gets the player's stun-or-armor choice; default to armor.
+	var result: Dictionary = AbilityResolver.resolve_round(board.piece_types, enemy_action_scale, AbilityResolver.SHIELD_CHOICE_ARMOR)
+	await _apply_enemy_round_result(result)
+	if state == State.ENDED:
+		_enemy_round_in_flight = false
+		return
+	_enemy_round_count += 1
+	enemy_action_scale.clear()
+	emit_signal("enemy_round_finished")
+	_enemy_round_in_flight = false
+
+func _apply_enemy_round_result(result: Dictionary) -> void:
+	# Mirror of _apply_player_round_result with caster=enemy, target=player.
+	var damage: int = int(result.get("damage", 0))
+	var bypass: int = int(result.get("bypass", 0))
+	var pierce: int = int(result.get("pierce", 0))
+	var heal: int = int(result.get("heal", 0))
+	var armor: int = int(result.get("armor", 0))
+	# Boss enrage: at low HP the enemy hits harder. Preserved from the old model.
+	if level != null and level.boss_modifier != null:
+		var hp_frac: float = float(enemy.current_hp) / float(max(1, enemy.max_hp))
+		if hp_frac <= level.boss_modifier.enrage_threshold:
+			damage = int(damage * level.boss_modifier.enrage_multiplier)
+	if armor > 0:
+		enemy.add_armor(armor)
+	if heal > 0:
+		var healed: int = enemy.heal(heal)
+		emit_signal("heal_done", false, healed)
+	if pierce > 0 or damage > 0:
+		var dealt: int = player.take_damage(damage, bypass > 0, pierce)
+		if dealt > 0:
+			AudioBus.play_hit()
+			emit_signal("damage_dealt", true, dealt, -1)
+		enemy.attacked.emit()
+	# Resolver's "enemy_effects" are effects on the target — when the enemy is
+	# the caster, those apply to the player. Likewise "player_effects" land on
+	# the enemy.
+	for fx_v in result.get("enemy_effects", []):
+		var fx: StatusEffect = fx_v
+		player.apply_effect(fx)
+		emit_signal("status_applied", true, fx)
+	for fx_v in result.get("player_effects", []):
+		var fx: StatusEffect = fx_v
+		enemy.apply_effect(fx)
+		emit_signal("status_applied", false, fx)
+	await get_tree().create_timer(0.25).timeout
+
+# Build a random 5x5 board, find any matches, and emit one as the enemy's emblem.
+# The smaller board makes 4+/5+ runs naturally rare, which throttles enemy combo
+# strength compared to the hero's 9x9.
+func _generate_enemy_emblem() -> Emblem:
+	for attempt in range(6):
+		var grid: Array = _make_random_sim_grid()
+		var matches: Array = MatchDetector.find_matches(grid, 3)
+		if matches.is_empty():
+			continue
+		var picked: Dictionary = matches[_enemy_rng.randi() % matches.size()]
+		var k: int = int(picked["kind"])
+		var longest: int = MatchDetector.longest_axis_run_in(picked["cells"], grid)
+		var lvl: int = PieceType.level_from_match(longest)
+		return Emblem.new(k, lvl)
+	# Fallback: occasional dry tick — emit a low-level random emblem so the
+	# enemy still progresses.
+	var fallback_kind: int = _enemy_rng.randi() % PieceType.SPAWNABLE_KIND_COUNT
+	return Emblem.new(fallback_kind, 1)
+
+func _make_random_sim_grid() -> Array:
+	var grid: Array = []
+	for y in range(ENEMY_SIM_BOARD_SIZE):
+		var row: Array = []
+		for x in range(ENEMY_SIM_BOARD_SIZE):
+			row.append(_enemy_rng.randi() % PieceType.SPAWNABLE_KIND_COUNT)
+		grid.append(row)
+	return grid
+
 func _on_player_died(_a: CombatActor) -> void:
 	if state == State.ENDED:
 		return
 	state = State.ENDED
+	if _enemy_tick_timer != null:
+		_enemy_tick_timer.stop()
 	emit_signal("battle_lost")
 
 func _on_enemy_died(_a: CombatActor) -> void:
 	if state == State.ENDED:
 		return
 	state = State.ENDED
+	if _enemy_tick_timer != null:
+		_enemy_tick_timer.stop()
 	emit_signal("battle_won")

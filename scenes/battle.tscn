@@ -190,59 +190,53 @@ offset_top = 420.0
 offset_bottom = 530.0
 mouse_filter = 2
 
-[node name="ActionScaleLabel" type="Label" parent="ActionScaleBar"]
-offset_left = 24.0
-offset_top = 0.0
-offset_right = 600.0
-offset_bottom = 40.0
-text = "Action scale"
-theme_override_font_sizes/font_size = 32
-theme_override_colors/font_color = Color(0.85, 0.78, 0.62, 1)
-
-[node name="ActionScale" type="HBoxContainer" parent="ActionScaleBar"]
-anchor_left = 0.5
-anchor_right = 0.5
-offset_left = -180.0
-offset_top = 44.0
-offset_right = 180.0
-offset_bottom = 108.0
-alignment = 1
+[node name="PlayerActionScale" type="HBoxContainer" parent="ActionScaleBar"]
+offset_left = 40.0
+offset_top = 24.0
+offset_right = 344.0
+offset_bottom = 88.0
+alignment = 0
 script = ExtResource("8_scale")
-theme_override_constants/separation = 8
+slot_size = 56.0
+slot_separation = 6
+theme_override_constants/separation = 6
+
+[node name="EnemyActionScale" type="HBoxContainer" parent="ActionScaleBar"]
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -344.0
+offset_top = 24.0
+offset_right = -40.0
+offset_bottom = 88.0
+alignment = 2
+script = ExtResource("8_scale")
+slot_size = 56.0
+slot_separation = 6
+theme_override_constants/separation = 6
 
 [node name="BattleScene" type="Node2D" parent="."]
 position = Vector2(540, 660)
 
 [node name="Floor" type="ColorRect" parent="BattleScene"]
-offset_left = -300.0
+offset_left = -400.0
 offset_top = 80.0
-offset_right = 300.0
+offset_right = 400.0
 offset_bottom = 120.0
 color = Color(0.18, 0.15, 0.10, 1)
 
 [node name="PlayerBattle" type="Node2D" parent="BattleScene"]
-position = Vector2(-150, 0)
+position = Vector2(-300, 0)
 script = ExtResource("7_bactor")
 is_player = true
 body_color = Color(0.62, 0.78, 0.95, 1)
 actor_label = "Hero"
 
 [node name="EnemyBattle" type="Node2D" parent="BattleScene"]
-position = Vector2(150, 0)
+position = Vector2(300, 0)
 script = ExtResource("7_bactor")
 is_player = false
 body_color = Color(0.85, 0.52, 0.42, 1)
 actor_label = "Enemy"
-
-[node name="EnemyActionScale" type="HBoxContainer" parent="BattleScene"]
-offset_left = 48.0
-offset_top = -200.0
-offset_right = 252.0
-offset_bottom = -164.0
-mouse_filter = 2
-script = ExtResource("8_scale")
-slot_size = 36.0
-separation = 6
 
 [node name="BoardArea" type="Control" parent="."]
 anchor_top = 1.0
@@ -281,16 +275,8 @@ board_path = NodePath("../BoardArea/Board")
 player_actor_path = NodePath("../Actors/PlayerActor")
 enemy_actor_path = NodePath("../Actors/EnemyActor")
 
-[node name="ShieldChoiceLayer" type="CanvasLayer" parent="."]
-layer = 10
+[node name="ShieldChoicePopup" type="PanelContainer" parent="."]
 visible = false
-
-[node name="Backdrop" type="ColorRect" parent="ShieldChoiceLayer"]
-anchor_right = 1.0
-anchor_bottom = 1.0
-color = Color(0, 0, 0, 0.55)
-
-[node name="ShieldChoicePopup" type="PanelContainer" parent="ShieldChoiceLayer"]
 anchor_left = 0.5
 anchor_top = 0.5
 anchor_right = 0.5
@@ -300,36 +286,36 @@ offset_top = -200.0
 offset_right = 360.0
 offset_bottom = 200.0
 
-[node name="VBox" type="VBoxContainer" parent="ShieldChoiceLayer/ShieldChoicePopup"]
+[node name="VBox" type="VBoxContainer" parent="ShieldChoicePopup"]
 theme_override_constants/separation = 16
 
-[node name="Margin" type="MarginContainer" parent="ShieldChoiceLayer/ShieldChoicePopup/VBox"]
+[node name="Margin" type="MarginContainer" parent="ShieldChoicePopup/VBox"]
 theme_override_constants/margin_left = 24
 theme_override_constants/margin_right = 24
 theme_override_constants/margin_top = 24
 theme_override_constants/margin_bottom = 24
 
-[node name="Title" type="Label" parent="ShieldChoiceLayer/ShieldChoicePopup/VBox/Margin"]
+[node name="Title" type="Label" parent="ShieldChoicePopup/VBox/Margin"]
 horizontal_alignment = 1
 text = "Shield Combo!"
 theme_override_font_sizes/font_size = 50
 theme_override_colors/font_color = Color(0.95, 0.82, 0.42, 1)
 
-[node name="Subtitle" type="Label" parent="ShieldChoiceLayer/ShieldChoicePopup/VBox"]
+[node name="Subtitle" type="Label" parent="ShieldChoicePopup/VBox"]
 horizontal_alignment = 1
 text = "Choose how to spend it"
 theme_override_font_sizes/font_size = 32
 
-[node name="Buttons" type="HBoxContainer" parent="ShieldChoiceLayer/ShieldChoicePopup/VBox"]
+[node name="Buttons" type="HBoxContainer" parent="ShieldChoicePopup/VBox"]
 theme_override_constants/separation = 16
 alignment = 1
 
-[node name="ArmorBtn" type="Button" parent="ShieldChoiceLayer/ShieldChoicePopup/VBox/Buttons"]
+[node name="ArmorBtn" type="Button" parent="ShieldChoicePopup/VBox/Buttons"]
 custom_minimum_size = Vector2(280, 118)
 text = "+Armor (boost)"
 theme_override_font_sizes/font_size = 38
 
-[node name="StunBtn" type="Button" parent="ShieldChoiceLayer/ShieldChoicePopup/VBox/Buttons"]
+[node name="StunBtn" type="Button" parent="ShieldChoicePopup/VBox/Buttons"]
 custom_minimum_size = Vector2(280, 118)
 text = "Stun the enemy"
 theme_override_font_sizes/font_size = 38

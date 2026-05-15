@@ -18,20 +18,20 @@ extends Control
 @onready var _pause_button: Button = $TopBar/PauseButton
 @onready var _exit_button: Button = $TopBar/ExitButton
 @onready var _floating_text_root: Node2D = $FloatingTextRoot
-@onready var _action_scale: ActionScale = $ActionScaleBar/ActionScale
-@onready var _enemy_action_scale: ActionScale = $BattleScene/EnemyActionScale
-@onready var _shield_popup: CanvasLayer = $ShieldChoiceLayer
-@onready var _shield_armor_btn: Button = $ShieldChoiceLayer/ShieldChoicePopup/VBox/Buttons/ArmorBtn
-@onready var _shield_stun_btn: Button = $ShieldChoiceLayer/ShieldChoicePopup/VBox/Buttons/StunBtn
-@onready var _shield_subtitle: Label = $ShieldChoiceLayer/ShieldChoicePopup/VBox/Subtitle
+@onready var _action_scale: ActionScale = $ActionScaleBar/PlayerActionScale
+@onready var _enemy_action_scale: ActionScale = $ActionScaleBar/EnemyActionScale
+@onready var _shield_popup: PanelContainer = $ShieldChoicePopup
+@onready var _shield_armor_btn: Button = $ShieldChoicePopup/VBox/Buttons/ArmorBtn
+@onready var _shield_stun_btn: Button = $ShieldChoicePopup/VBox/Buttons/StunBtn
+@onready var _shield_subtitle: Label = $ShieldChoicePopup/VBox/Subtitle
 @onready var _tutorial: TutorialOverlay = $TutorialOverlay
 @onready var _settings_panel: SettingsPanel = $SettingsPanel
 
 # Track turns and starting HP so we can grant 1-3 stars on victory.
 var _rounds_taken: int = 0
 
-const FLOAT_FONT_SIZE_SMALL: int = 56
-const FLOAT_FONT_SIZE_BIG: int = 88
+const FLOAT_FONT_SIZE_SMALL: int = 32
+const FLOAT_FONT_SIZE_BIG: int = 56
 
 var _shake_base: Vector2 = Vector2.ZERO
 
@@ -67,7 +67,6 @@ func _ready() -> void:
 	_combat.shield_choice_required.connect(_on_shield_choice_required)
 	_combat.battle_won.connect(_on_battle_won)
 	_combat.battle_lost.connect(_on_battle_lost)
-	_combat.enemy_special_attack.connect(_on_enemy_special_attack)
 	_combat.enemy_stunned_skipped.connect(_on_enemy_stunned)
 	_combat.round_finished.connect(_on_round_finished_count)
 	_pause_button.pressed.connect(_on_pause)
@@ -90,14 +89,12 @@ func _layout_board() -> void:
 	_board.position = Vector2((area_size.x - board_size.x) * 0.5, (area_size.y - board_size.y) * 0.5)
 
 func _on_turn_changed(is_player_turn: bool) -> void:
+	# Both actors stay active in real-time combat — the label just flips when
+	# the hero's scale is being resolved so the player knows input is paused.
 	if is_player_turn:
-		_turn_label.text = "Your turn — collect 5 emblems"
-		_player_battle_actor.modulate = Color(1, 1, 1, 1)
-		_enemy_battle_actor.modulate = Color(0.7, 0.7, 0.8, 1)
+		_turn_label.text = "Collect 5 emblems"
 	else:
-		_turn_label.text = "%s acts" % _combat.level.enemy_name
-		_player_battle_actor.modulate = Color(0.7, 0.7, 0.8, 1)
-		_enemy_battle_actor.modulate = Color(1, 1, 1, 1)
+		_turn_label.text = "Resolving..."
 
 func _on_emblem_added(emblem: Emblem, scale_size: int) -> void:
 	_action_scale.fill_slot(scale_size - 1, emblem)
@@ -108,6 +105,9 @@ func _on_round_executing(_emblems: Array) -> void:
 
 func _on_round_finished() -> void:
 	_action_scale.clear_all()
+	# Repopulate any overflow emblems that carried into the new round.
+	for i in range(_combat.action_scale.size()):
+		_action_scale.fill_slot(i, _combat.action_scale[i])
 
 func _on_enemy_emblem_added(emblem: Emblem, scale_size: int) -> void:
 	_enemy_action_scale.fill_slot(scale_size - 1, emblem)
@@ -174,10 +174,6 @@ func _on_battle_lost() -> void:
 	await get_tree().create_timer(0.7).timeout
 	SceneRouter.goto_game_over()
 
-func _on_enemy_special_attack() -> void:
-	_spawn_float_text(_enemy_battle_actor.global_position + Vector2(0, -120), "SPECIAL!", Color(1, 0.7, 0.2), 99)
-	_screen_shake(0.5, 0.35)
-
 func _on_enemy_stunned() -> void:
 	_spawn_float_text(_enemy_battle_actor.global_position + Vector2(0, -120), "STUNNED!", Color(1, 0.92, 0.30), 99)
 
@@ -185,7 +181,7 @@ func _on_pause() -> void:
 	_settings_panel.visible = not _settings_panel.visible
 
 func _on_exit_pressed() -> void:
-	SceneRouter.goto_main_menu()
+	SceneRouter.goto_chapter_map()
 
 func _on_round_finished_count() -> void:
 	_rounds_taken += 1
