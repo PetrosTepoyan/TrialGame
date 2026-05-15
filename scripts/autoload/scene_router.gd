@@ -6,6 +6,7 @@ const CHAPTER_MAP := "res://scenes/chapter_map.tscn"
 const BATTLE := "res://scenes/battle.tscn"
 const GAME_OVER := "res://scenes/ui/game_over.tscn"
 const VICTORY := "res://scenes/ui/victory.tscn"
+const UPGRADE_PICKER := "res://scenes/ui/upgrade_picker.tscn"
 
 const FADE_TIME: float = 0.25
 
@@ -46,3 +47,4 @@ func goto_chapter_map() -> void: goto(CHAPTER_MAP)
 func goto_battle() -> void: goto(BATTLE)
 func goto_game_over() -> void: goto(GAME_OVER)
 func goto_victory() -> void: goto(VICTORY)
+func goto_upgrade_picker() -> void: goto(UPGRADE_PICKER)

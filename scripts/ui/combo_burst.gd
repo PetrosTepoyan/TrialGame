@@ -1,8 +1,9 @@
 class_name ComboBurst
 extends Node2D
 
-# Full-screen flash + ring shockwave when a combo (3+ same kind/level emblems
-# in the action scale) fires. Color tints the flash and the ring.
+# Full-screen flash + ring shockwave. Phase B repurpose: still fires for
+# cascade combos AND for spec attacks (battle.gd routes both through here).
+# Color tints the flash and the ring.
 #
 # Usage:
 #   ComboBurst.spawn(viewport_size, color, parent)

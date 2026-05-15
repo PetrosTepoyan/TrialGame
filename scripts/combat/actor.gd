@@ -23,6 +23,11 @@ var armor: int = 0                  # temporary armor stacking on top of inheren
 var active_effects: Array = []      # Array[StatusEffect]
 var _was_low_hp: bool = false       # latch so low_hp fires once per crossing
 
+# CP3 hook: when set, DoT damage of these kinds is multiplied. Defaults to a
+# no-op so callers that don't care don't have to touch it.
+var weakness_dot_kinds: Array[int] = []
+var weakness_dot_multiplier: float = 1.0
+
 func _ready() -> void:
 	current_hp = max_hp
 	armor = 0
@@ -37,6 +42,8 @@ func setup(p_max_hp: int, p_base_damage: int, p_inherent_armor: int = 0) -> void
 	armor = 0
 	active_effects = []
 	_was_low_hp = false
+	weakness_dot_kinds = []
+	weakness_dot_multiplier = 1.0
 	emit_signal("hp_changed", current_hp, max_hp)
 	emit_signal("armor_changed", armor + inherent_armor)
 	emit_signal("status_changed", active_effects)
@@ -69,7 +76,7 @@ func effective_armor() -> int:
 	# Defense debuff lowers inherent armor by its magnitude while active.
 	for fx_v in active_effects:
 		var fx: StatusEffect = fx_v
-		if fx.kind == StatusEffect.Kind.DEFENSE_DEBUFF:
+		if fx.kind == StatusEffect.Kind.DEFENSE_DEBUFF and fx.is_active():
 			defense = max(0, defense - fx.magnitude)
 			break
 	return max(0, defense)
@@ -104,47 +111,67 @@ func strip_armor(amount: int) -> int:
 	emit_signal("armor_changed", armor + inherent_armor)
 	return stripped
 
-func apply_effect(fx: StatusEffect) -> void:
-	# If an effect of this kind already exists, refresh its duration to the
-	# longer of the two and keep the stronger dps/magnitude.
+# Refresh-or-add a status. Same-kind statuses merge: longer duration wins, and
+# we keep the strongest dps/magnitude of the two.
+func apply_status(status: StatusEffect) -> void:
 	for existing_v in active_effects:
 		var existing: StatusEffect = existing_v
-		if existing.kind == fx.kind:
-			existing.rounds_remaining = max(existing.rounds_remaining, fx.rounds_remaining)
-			existing.dps = max(existing.dps, fx.dps)
-			existing.magnitude = max(existing.magnitude, fx.magnitude)
+		if existing.kind == status.kind:
+			existing.seconds_remaining = max(existing.seconds_remaining, status.seconds_remaining)
+			existing.dps = max(existing.dps, status.dps)
+			existing.magnitude = max(existing.magnitude, status.magnitude)
 			emit_signal("status_changed", active_effects)
 			return
-	active_effects.append(fx)
+	active_effects.append(status)
 	emit_signal("status_changed", active_effects)
 
-# Tick all DoTs once and decrement durations. Returns total DoT damage taken.
-# Stun and defense-debuff also decrement here but don't directly do damage.
-func tick_effects() -> int:
-	if active_effects.is_empty():
+# Back-compat alias — older callers used apply_effect.
+func apply_effect(fx: StatusEffect) -> void:
+	apply_status(fx)
+
+# CP3 weakness check: any DoT of a flagged kind hits harder.
+func damage_taken_multiplier_for_dot(kind: int) -> float:
+	if kind in weakness_dot_kinds:
+		return weakness_dot_multiplier
+	return 1.0
+
+# Tick all timed effects forward by `delta` seconds. Applies DoT damage,
+# decrements seconds_remaining, drops expired statuses. Returns total DoT
+# damage taken this tick (for UI / floating text).
+func tick_dot_seconds(delta: float) -> int:
+	if active_effects.is_empty() or delta <= 0.0:
 		return 0
-	var dot_dmg: int = 0
+	var dot_dmg_total: int = 0
+	# First pass: apply DoT damage. We apply each DoT separately so the weakness
+	# multiplier can be per-kind.
 	for fx_v in active_effects:
 		var fx: StatusEffect = fx_v
-		if StatusEffect.is_dot(fx.kind):
-			dot_dmg += fx.dps
-	if dot_dmg > 0:
-		take_damage(dot_dmg, true)  # DoT bypasses armor
-	# Decrement durations after damage applied.
+		if not fx.is_active():
+			continue
+		if StatusEffect.is_dot(fx.kind) and fx.dps > 0:
+			var slice: float = min(delta, fx.seconds_remaining)
+			var raw: float = float(fx.dps) * slice * damage_taken_multiplier_for_dot(fx.kind)
+			var dmg: int = int(round(raw))
+			if dmg > 0:
+				take_damage(dmg, true)  # DoT bypasses armor
+				dot_dmg_total += dmg
+				if current_hp <= 0:
+					break
+	# Second pass: decrement durations and prune expired.
 	var still_alive: Array = []
 	for fx_v in active_effects:
 		var fx: StatusEffect = fx_v
-		fx.rounds_remaining -= 1
-		if fx.rounds_remaining > 0:
+		fx.seconds_remaining = max(0.0, fx.seconds_remaining - delta)
+		if fx.seconds_remaining > 0.0:
 			still_alive.append(fx)
 	active_effects = still_alive
 	emit_signal("status_changed", active_effects)
-	return dot_dmg
+	return dot_dmg_total
 
 func is_stunned() -> bool:
 	for fx_v in active_effects:
 		var fx: StatusEffect = fx_v
-		if fx.kind == StatusEffect.Kind.STUN and fx.rounds_remaining > 0:
+		if fx.kind == StatusEffect.Kind.STUN and fx.is_active():
 			return true
 	return false
 

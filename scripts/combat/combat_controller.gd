@@ -1,40 +1,38 @@
 class_name CombatController
 extends Node
 
-# Real-time action-scale combat:
-#   - Player matches accumulate emblems on the hero's action scale (capacity 5).
-#     When it fills, the round resolves via AbilityResolver against the enemy.
-#   - The enemy fills its own action scale independently at 1 emblem / second.
-#     Emblems are drawn from a simulated 5x5 board so combos are naturally
-#     rarer than what the hero gets from the 9x9. When the enemy scale fills it
-#     applies its abilities to the hero and resets.
-#   - Enemy resolves wait for the player's round to finish if one is in flight,
-#     so effects never interleave mid-resolve.
+# Real-time mana / spec-attack combat (Phase B).
+#
+#   - Both actors auto-attack on independent AutoAttackLoop timers. The player's
+#     loop is paused around spec animations so the hit doesn't overlap the FX.
+#   - Each board match fires its piece-kind's immediate effect through
+#     MatchEffectApplier (small damage / armor / DoT) AND adds mana to the
+#     player's ManaSystem based on run length / square / corner.
+#   - When mana ≥ 100 the player can spend the WHOLE bar to fire a special
+#     attack at the current tier (1/2/3). The button + animation live in
+#     battle.gd; this controller just resolves and applies the effect.
+#   - A 1-second timer drives status DoT/decay on both actors.
 
-signal turn_changed(is_player_turn: bool)
 signal damage_dealt(target_is_player: bool, amount: int, source_kind: int)
 signal heal_done(target_is_player: bool, amount: int)
 signal status_applied(target_is_player: bool, effect: StatusEffect)
-signal emblem_added(emblem: Emblem, scale_size: int)
-signal round_executing(emblems: Array)
-signal round_finished
-signal enemy_emblem_added(emblem: Emblem, scale_size: int)
-signal enemy_round_executing(emblems: Array)
-signal enemy_round_finished
-signal shield_choice_required(combo_level: int)
 signal battle_won
 signal battle_lost
 signal enemy_stunned_skipped
+# New Phase B signals.
+signal mana_changed(value: int, max_mana: int)
+signal spec_attack_fired(level: int)
+signal auto_attack_fired(is_player: bool, damage: int)
+# Stub: Phase D wires items, but the signal lives here so other systems can
+# subscribe without bouncing through a future refactor.
+signal item_broken(item: Resource, location: Vector2i)
 
-enum State { PLAYER_INPUT, RESOLVING, ENDED }
+enum State { ACTIVE, ENDED }
 
-const SCALE_CAPACITY: int = 5
-# Enemy gains one emblem per tick. At 5-capacity that's a full scale every
-# 2.0 * 5 = 10 s minimum (modulated by combo rolls). Lower => harder.
-# Tweakable live from the debug menu via the `combat.enemy_tick_seconds`
-# override; player feedback wanted slower default bots.
-const ENEMY_TICK_SECONDS: float = 2.0
-const ENEMY_SIM_BOARD_SIZE: int = 5
+# Default auto-attack interval for the player when the level doesn't override.
+const PLAYER_INTERVAL_DEFAULT: float = 1.8
+# Per spec: each second the dot/status timer ticks.
+const STATUS_TICK_SECONDS: float = 1.0
 
 @export var board_path: NodePath
 @export var player_actor_path: NodePath
@@ -45,20 +43,23 @@ const ENEMY_SIM_BOARD_SIZE: int = 5
 @onready var player: CombatActor = get_node(player_actor_path)
 @onready var enemy: CombatActor = get_node(enemy_actor_path)
 
-var state: int = State.PLAYER_INPUT
-var action_scale: Array = []            # Array[Emblem]
-var _player_round_count: int = 0
-var _enemy_round_count: int = 0
-var _pending_shield_choice: int = -1
-var _player_round_in_flight: bool = false
-var _enemy_round_in_flight: bool = false
+var state: int = State.ACTIVE
 
-var enemy_action_scale: Array = []      # Array[Emblem]
-var _enemy_tick_timer: Timer = null
-var _enemy_rng := RandomNumberGenerator.new()
+var mana_system: ManaSystem = null
+var player_auto: AutoAttackLoop = null
+var enemy_auto: AutoAttackLoop = null
+
+var _status_timer: Timer = null
+
+# Cascade accumulator: cascade-scope bonus is applied at cascade_finished.
+# Tracks per-(kind,level) counts of matches in the current cascade so the
+# bonus tier matches the .tres `combo_bonus_pct` table.
+var _cascade_matches: Array = []           # Array of { kind, level, longest_run }
+var _cascade_deferred_damage: int = 0      # accumulated raw damage this cascade
+var _cascade_deferred_armor: int = 0
 
 func _ready() -> void:
-	_enemy_rng.randomize()
+	add_to_group("combat_controllers")
 	if level == null:
 		level = GameState.get_current_level()
 	_apply_level_stats()
@@ -67,35 +68,25 @@ func _ready() -> void:
 	board.invalid_swap.connect(_on_invalid_swap)
 	player.died.connect(_on_player_died)
 	enemy.died.connect(_on_enemy_died)
-	state = State.PLAYER_INPUT
-	emit_signal("turn_changed", true)
-	_enemy_tick_timer = Timer.new()
-	_enemy_tick_timer.wait_time = ENEMY_TICK_SECONDS
-	_enemy_tick_timer.one_shot = false
-	_enemy_tick_timer.autostart = false
-	add_child(_enemy_tick_timer)
-	_enemy_tick_timer.timeout.connect(_on_enemy_tick)
-	_enemy_tick_timer.start()
-	# Pick up any persisted debug overrides for tick speed / enemy damage so a
-	# tester's tuning carries from one battle into the next.
+	_install_mana_system()
+	_install_auto_attack_loops()
+	_install_status_timer()
 	_apply_debug_overrides()
 
+# Re-read live debug overrides (Phase I will wire mana/spec controls; for now
+# we still honour the existing per-tick enemy damage / interval values so a
+# tester's tuning persists across battles).
 func _apply_debug_overrides() -> void:
-	# Read the live debug overrides each enemy tick so a tester moving the
-	# spinbox while combat is running sees the change without restarting.
 	var dbg: Node = get_node_or_null("/root/DebugOverlay")
 	if dbg == null or not dbg.has_method("get_override"):
 		return
-	var tick_v: Variant = dbg.call("get_override", "combat.enemy_tick_seconds", null)
-	if tick_v != null and _enemy_tick_timer != null:
-		var tick_f: float = float(tick_v)
-		if tick_f > 0.0 and abs(_enemy_tick_timer.wait_time - tick_f) > 0.001:
-			_enemy_tick_timer.wait_time = tick_f
 	var dmg_v: Variant = dbg.call("get_override", "combat.enemy_damage", null)
 	if dmg_v != null and enemy != null:
 		var dmg_i: int = int(dmg_v)
-		if dmg_i >= 0 and enemy.base_damage != dmg_i:
+		if dmg_i >= 0:
 			enemy.base_damage = dmg_i
+			if enemy_auto != null:
+				enemy_auto.base_damage = dmg_i
 
 func _apply_level_stats() -> void:
 	player.is_player = true
@@ -108,348 +99,263 @@ func _apply_level_stats() -> void:
 		enemy_armor = level.boss_modifier.armor
 	enemy.setup(level.enemy_max_hp, level.enemy_damage, enemy_armor)
 
-func _on_match_resolved(kind: int, _count: int, longest_run: int, _from_rainbow: bool = false) -> void:
-	# Each match yields one Emblem; sword damage / etc. is decided at round
-	# execution time, not per-match. Rainbow piece is disabled in the board
-	# config — the from_rainbow arg stays for backwards compatibility but is
-	# ignored.
+func _install_mana_system() -> void:
+	mana_system = ManaSystem.new()
+	mana_system.name = "ManaSystem"
+	add_child(mana_system)
+	mana_system.mana_changed.connect(_on_mana_changed_internal)
+
+func _on_mana_changed_internal(value: int, max_mana: int) -> void:
+	mana_changed.emit(value, max_mana)
+
+func _install_auto_attack_loops() -> void:
+	# Player auto-attack: targets the enemy.
+	player_auto = AutoAttackLoop.new()
+	player_auto.name = "PlayerAutoAttack"
+	player_auto.attacker = player
+	player_auto.target = enemy
+	player_auto.interval = PLAYER_INTERVAL_DEFAULT
+	player_auto.base_damage = player.base_damage
+	add_child(player_auto)
+	player_auto.auto_attacked.connect(_on_player_auto_attacked)
+	player_auto.start()
+	# Enemy auto-attack: targets the player.
+	enemy_auto = AutoAttackLoop.new()
+	enemy_auto.name = "EnemyAutoAttack"
+	enemy_auto.attacker = enemy
+	enemy_auto.target = player
+	# level.enemy_attack_interval is stored as int "turns" in pre-Phase-B saves;
+	# reinterpret as seconds with a reasonable floor.
+	var enemy_interval: float = 2.0
+	if level != null and level.enemy_attack_interval > 0:
+		enemy_interval = max(0.8, float(level.enemy_attack_interval))
+	# Boss / king authoring used enemy_attack_interval=1 to mean "fast"; that
+	# becomes a 1.4s tempo to keep them threatening but not unfair.
+	if enemy_interval <= 1.0:
+		enemy_interval = 1.4
+	enemy_auto.interval = enemy_interval
+	enemy_auto.base_damage = enemy.base_damage
+	add_child(enemy_auto)
+	enemy_auto.auto_attacked.connect(_on_enemy_auto_attacked)
+	enemy_auto.start()
+
+func _install_status_timer() -> void:
+	_status_timer = Timer.new()
+	_status_timer.wait_time = STATUS_TICK_SECONDS
+	_status_timer.one_shot = false
+	_status_timer.autostart = false
+	add_child(_status_timer)
+	_status_timer.timeout.connect(_on_status_tick)
+	_status_timer.start()
+
+func _on_status_tick() -> void:
 	if state == State.ENDED:
 		return
-	var lvl: int = PieceType.level_from_match(longest_run)
-	var e := Emblem.new(kind, lvl)
-	_enqueue_emblem(e)
-
-func _enqueue_emblem(e: Emblem) -> void:
-	# Drop emblems past the 5-slot cap. Players asked for the old behaviour
-	# where the scale clears on round execute and they refill from zero —
-	# carry-over from a cascade made it feel like the next round was already
-	# half-spent.
-	if action_scale.size() >= SCALE_CAPACITY:
-		return
-	action_scale.append(e)
-	emit_signal("emblem_added", e, action_scale.size())
-
-func _on_cascade_finished(_total: int, _depth: int) -> void:
-	if state == State.ENDED:
-		return
-	if action_scale.size() >= SCALE_CAPACITY:
-		_execute_round()
-	else:
-		# Cascade resolved without filling the scale — back to player input.
-		_recheck_player_input()
-
-func _on_invalid_swap() -> void:
-	pass
-
-# --- Player round execution ---
-
-func _execute_round() -> void:
-	_player_round_in_flight = true
-	state = State.RESOLVING
-	board.set_input_locked(true)
-	emit_signal("turn_changed", false)
-	emit_signal("round_executing", action_scale.duplicate())
-	AudioBus.play_round_execute()
-	AudioBus.duck_music_briefly()
-	Haptics.heavy_tap()
-	_spawn_round_execute_burst()
-	var combo_level: int = _detect_round_combo_level(action_scale)
-	if combo_level > 0:
-		AudioBus.play_combo(combo_level)
-	if _has_combo(action_scale):
-		Haptics.pulse(2, 40, 60)
-	var shield_choice: int = AbilityResolver.SHIELD_CHOICE_ARMOR
-	var shield_combo_level: int = _detect_shield_combo_level(action_scale)
-	if shield_combo_level > 0:
-		shield_choice = await _await_shield_choice(shield_combo_level)
-	var result: Dictionary = AbilityResolver.resolve_round(board.piece_types, action_scale, shield_choice)
-	await _apply_player_round_result(result)
-	if state == State.ENDED:
-		_player_round_in_flight = false
-		return
-	# Tick DoTs/stun counters once per resolved player round.
-	var enemy_dot: int = enemy.tick_effects()
+	# Apply DoT damage and decay durations. emit damage_dealt for any DoT tick
+	# so the floating-text layer in battle.gd can show it.
+	var enemy_dot: int = enemy.tick_dot_seconds(STATUS_TICK_SECONDS)
 	if enemy_dot > 0:
 		emit_signal("damage_dealt", false, enemy_dot, -1)
-	var player_dot: int = player.tick_effects()
+	if state == State.ENDED:
+		return
+	var player_dot: int = player.tick_dot_seconds(STATUS_TICK_SECONDS)
 	if player_dot > 0:
 		emit_signal("damage_dealt", true, player_dot, -1)
+
+# --- Match handling -------------------------------------------------------
+
+func _on_match_resolved(kind: int, _count: int, longest_run: int, _from_rainbow: bool, effective_level: int) -> void:
 	if state == State.ENDED:
-		_player_round_in_flight = false
 		return
-	# Reset scale fully — no carry-over. Player must collect 5 fresh emblems.
-	action_scale = []
-	_player_round_count += 1
-	emit_signal("round_finished")
-	_player_round_in_flight = false
-	_recheck_player_input()
+	# Apply the per-match effect. effective_level is the canonical tier (the
+	# board has already bumped it for squares/corners/rainbow).
+	var lvl: int = effective_level
+	if lvl < 1:
+		lvl = PieceType.level_from_match(longest_run)
+	var result: Dictionary = MatchEffectApplier.apply(kind, lvl, longest_run, player, enemy)
+	_consume_match_result(result, kind)
+	# Mana gain.
+	var mana_amount: int = mana_for_match(lvl, longest_run)
+	if mana_system != null and mana_amount > 0:
+		mana_system.add(mana_amount)
+	# Track for cascade-scope bonus.
+	_cascade_matches.append({ "kind": kind, "level": lvl, "longest_run": longest_run })
 
-func _has_combo(emblems: Array) -> bool:
-	# Any (kind, level) pair appearing 3+ times in the scale counts as a combo.
-	# Used to fire an extra haptic pulse when the round visibly chains.
-	var counts: Dictionary = {}
-	for e_v in emblems:
-		var e: Emblem = e_v
-		var key: String = "%d:%d" % [e.piece_kind, e.level]
-		counts[key] = int(counts.get(key, 0)) + 1
-		if counts[key] >= 3:
-			return true
-	return false
-
-func _spawn_round_execute_burst() -> void:
-	# Drop a RoundExecuteBurst into the scene at a sensible screen-space center
-	# so the VFX reads even though CombatController is a logic-only Node. The
-	# battle scene parents Combat directly — we attach the burst there.
-	var parent_node: Node = get_parent()
-	if parent_node == null:
-		return
-	var viewport_size: Vector2 = Vector2(1080, 1920)
-	var tree := get_tree()
-	if tree != null and tree.root != null:
-		viewport_size = tree.root.get_visible_rect().size
-	# Center the burst horizontally; vertically it sits near the action scale
-	# strip — battle.tscn places PlayerActionScale around y=444. That keeps the
-	# ring expanding from the scale itself.
-	var center: Vector2 = Vector2(viewport_size.x * 0.5, 480.0)
-	var colors: Array = []
-	for e_v in action_scale:
-		var e: Emblem = e_v
-		colors.append(_kind_to_color(e.piece_kind))
-	RoundExecuteBurst.spawn(center, viewport_size, colors, parent_node)
-
-func _kind_to_color(kind: int) -> Color:
-	if board != null and board.piece_types.size() > kind and kind >= 0:
-		return board.piece_types[kind].color
-	match kind:
-		PieceType.Kind.SWORD: return Color(0.95, 0.78, 0.30)
-		PieceType.Kind.SHIELD: return Color(0.40, 0.62, 0.95)
-		PieceType.Kind.STAFF: return Color(0.66, 0.36, 0.85)
-		PieceType.Kind.BOW: return Color(0.40, 0.82, 0.50)
-	return Color.WHITE
-
-func _detect_shield_combo_level(emblems: Array) -> int:
-	var counts := {1: 0, 2: 0, 3: 0}
-	for e_v in emblems:
-		var e: Emblem = e_v
-		if e.piece_kind == PieceType.Kind.SHIELD and counts.has(e.level):
-			counts[e.level] += 1
-	for lvl in [3, 2, 1]:
-		if counts[lvl] >= 3:
-			return lvl
-	return 0
-
-func _await_shield_choice(combo_level: int) -> int:
-	_pending_shield_choice = -1
-	emit_signal("shield_choice_required", combo_level)
-	while _pending_shield_choice < 0:
-		await get_tree().process_frame
-		if state == State.ENDED:
-			return AbilityResolver.SHIELD_CHOICE_ARMOR
-	return _pending_shield_choice
-
-func provide_shield_choice(choice: int) -> void:
-	_pending_shield_choice = choice
-
-func _apply_player_round_result(result: Dictionary) -> void:
-	# Player as caster; enemy as target.
+func _consume_match_result(result: Dictionary, kind: int) -> void:
 	var damage: int = int(result.get("damage", 0))
-	var bypass: int = int(result.get("bypass", 0))
 	var pierce: int = int(result.get("pierce", 0))
-	var heal: int = int(result.get("heal", 0))
 	var armor: int = int(result.get("armor", 0))
+	var heal: int = int(result.get("heal", 0))
+	var status_v: Variant = result.get("status", null)
 	if armor > 0:
 		player.add_armor(armor)
 	if heal > 0:
 		var healed: int = player.heal(heal)
-		emit_signal("heal_done", true, healed)
+		if healed > 0:
+			emit_signal("heal_done", true, healed)
 	if pierce > 0 or damage > 0:
-		var dealt: int = enemy.take_damage(damage, bypass > 0, pierce)
+		var dealt: int = enemy.take_damage(damage, false, pierce)
 		if dealt > 0:
-			AudioBus.play_kind_hit(_dominant_damage_kind(action_scale))
-			emit_signal("damage_dealt", false, dealt, -1)
-	for fx_v in result.get("enemy_effects", []):
-		var fx: StatusEffect = fx_v
-		enemy.apply_effect(fx)
+			AudioBus.play_kind_hit(kind)
+			emit_signal("damage_dealt", false, dealt, kind)
+	if status_v != null:
+		var fx: StatusEffect = status_v
+		enemy.apply_status(fx)
 		emit_signal("status_applied", false, fx)
-	for fx_v in result.get("player_effects", []):
-		var fx: StatusEffect = fx_v
-		player.apply_effect(fx)
-		emit_signal("status_applied", true, fx)
-	await get_tree().create_timer(0.25).timeout
 
-func _recheck_player_input() -> void:
+# Mana awarded per match (placeholder values; balance pass in Phase I).
+#   match-3       → 20
+#   match-4       → 35
+#   match-5+      → 55
+#   2×2 / corner  → 30 (effective_level=2 with run=3 means a square or corner)
+#   any L3 chord  → 55
+func mana_for_match(effective_level: int, longest_run: int) -> int:
+	# L3 always pays out the top tier.
+	if effective_level >= 3:
+		return 55
+	# L2 with a long run (4) pays 35; L2 with short run (3, i.e. square/corner)
+	# pays 30 — square/corner is the smaller-board geometry path.
+	if effective_level == 2:
+		if longest_run >= 4:
+			return 35
+		return 30
+	# L1: standard 3-in-a-row.
+	return 20
+
+func _on_cascade_finished(_total: int, _depth: int) -> void:
 	if state == State.ENDED:
 		return
-	state = State.PLAYER_INPUT
-	board.set_input_locked(false)
-	emit_signal("turn_changed", true)
-	if board.state == Board.State.IDLE:
-		board.shuffle_board_if_dead()
+	_apply_cascade_bonus()
+	_cascade_matches.clear()
 
-# --- Enemy independent action-scale loop ---
-
-func _on_enemy_tick() -> void:
-	# Re-read live debug overrides each tick — tuning needs to apply mid-battle.
-	_apply_debug_overrides()
-	if state == State.ENDED:
+# Cascade-scope combo bonus: count (kind, level) frequencies across this
+# cascade. For any (kind, level) with 3+ same-level matches, look up the
+# combo_bonus_pct from the .tres and bonus the enemy with extra damage.
+# Damage-only — armor/heal stay match-scoped so the bonus reads as "combo
+# damage".
+func _apply_cascade_bonus() -> void:
+	if _cascade_matches.is_empty():
 		return
-	# Stunned enemy doesn't accumulate emblems; the stun still ticks down each
-	# player round, so it self-clears.
-	if enemy.is_stunned():
-		return
-	# Don't accumulate further while an enemy resolve is already in flight.
-	if _enemy_round_in_flight:
-		return
-	if enemy_action_scale.size() >= SCALE_CAPACITY:
-		return
-	var e: Emblem = _generate_enemy_emblem()
-	enemy_action_scale.append(e)
-	emit_signal("enemy_emblem_added", e, enemy_action_scale.size())
-	if enemy_action_scale.size() >= SCALE_CAPACITY:
-		_execute_enemy_round()
-
-func _execute_enemy_round() -> void:
-	_enemy_round_in_flight = true
-	# Wait for any in-flight player round to finish so effects don't interleave.
-	while _player_round_in_flight and state != State.ENDED:
-		await get_tree().process_frame
-	if state == State.ENDED:
-		_enemy_round_in_flight = false
-		return
-	if enemy.is_stunned():
-		emit_signal("enemy_stunned_skipped")
-		enemy_action_scale.clear()
-		emit_signal("enemy_round_finished")
-		_enemy_round_in_flight = false
-		return
-	emit_signal("enemy_round_executing", enemy_action_scale.duplicate())
-	AudioBus.play_round_execute()
-	AudioBus.duck_music_briefly()
-	# Enemy never gets the player's stun-or-armor choice; default to armor.
-	var result: Dictionary = AbilityResolver.resolve_round(board.piece_types, enemy_action_scale, AbilityResolver.SHIELD_CHOICE_ARMOR)
-	await _apply_enemy_round_result(result)
-	if state == State.ENDED:
-		_enemy_round_in_flight = false
-		return
-	_enemy_round_count += 1
-	enemy_action_scale.clear()
-	emit_signal("enemy_round_finished")
-	_enemy_round_in_flight = false
-
-func _apply_enemy_round_result(result: Dictionary) -> void:
-	# Mirror of _apply_player_round_result with caster=enemy, target=player.
-	var damage: int = int(result.get("damage", 0))
-	var bypass: int = int(result.get("bypass", 0))
-	var pierce: int = int(result.get("pierce", 0))
-	var heal: int = int(result.get("heal", 0))
-	var armor: int = int(result.get("armor", 0))
-	# Boss enrage: at low HP the enemy hits harder. Preserved from the old model.
-	if level != null and level.boss_modifier != null:
-		var hp_frac: float = float(enemy.current_hp) / float(max(1, enemy.max_hp))
-		if hp_frac <= level.boss_modifier.enrage_threshold:
-			damage = int(damage * level.boss_modifier.enrage_multiplier)
-	if armor > 0:
-		enemy.add_armor(armor)
-	if heal > 0:
-		var healed: int = enemy.heal(heal)
-		emit_signal("heal_done", false, healed)
-	if pierce > 0 or damage > 0:
-		var dealt: int = player.take_damage(damage, bypass > 0, pierce)
-		if dealt > 0:
-			AudioBus.play_kind_hit(_dominant_damage_kind(enemy_action_scale))
-			emit_signal("damage_dealt", true, dealt, -1)
-		enemy.attacked.emit()
-	# Resolver's "enemy_effects" are effects on the target — when the enemy is
-	# the caster, those apply to the player. Likewise "player_effects" land on
-	# the enemy.
-	for fx_v in result.get("enemy_effects", []):
-		var fx: StatusEffect = fx_v
-		player.apply_effect(fx)
-		emit_signal("status_applied", true, fx)
-	for fx_v in result.get("player_effects", []):
-		var fx: StatusEffect = fx_v
-		enemy.apply_effect(fx)
-		emit_signal("status_applied", false, fx)
-	await get_tree().create_timer(0.25).timeout
-
-# Build a random 5x5 board, find any matches, and emit one as the enemy's emblem.
-# The smaller board makes 4+/5+ runs naturally rare, which throttles enemy combo
-# strength compared to the hero's 9x9.
-func _generate_enemy_emblem() -> Emblem:
-	for attempt in range(6):
-		var grid: Array = _make_random_sim_grid()
-		var matches: Array = MatchDetector.find_matches(grid, 3)
-		if matches.is_empty():
+	# Bucket by (kind, level).
+	var counts: Dictionary = {}
+	for m_v in _cascade_matches:
+		var m: Dictionary = m_v
+		var key := "%d.%d" % [int(m["kind"]), int(m["level"])]
+		counts[key] = int(counts.get(key, 0)) + 1
+	for key_v in counts.keys():
+		var key: String = key_v
+		var c: int = int(counts[key])
+		if c < 3:
 			continue
-		var picked: Dictionary = matches[_enemy_rng.randi() % matches.size()]
-		var k: int = int(picked["kind"])
-		var longest: int = MatchDetector.longest_axis_run_in(picked["cells"], grid)
-		var lvl: int = PieceType.level_from_match(longest)
-		return Emblem.new(k, lvl)
-	# Fallback: occasional dry tick — emit a low-level random emblem so the
-	# enemy still progresses.
-	var fallback_kind: int = _enemy_rng.randi() % PieceType.SPAWNABLE_KIND_COUNT
-	return Emblem.new(fallback_kind, 1)
+		var parts: Array = key.split(".")
+		var k: int = int(parts[0])
+		var lvl: int = int(parts[1])
+		var pct: int = MatchEffectApplier.cascade_bonus_pct(k, lvl, c)
+		if pct <= 0:
+			continue
+		# Base damage for the bonus = level_values[lvl] × count.
+		var pt: PieceType = MatchEffectApplier.load_piece_type(k)
+		if pt == null or pt.level_values.size() < 3:
+			continue
+		var base: int = pt.level_values[lvl - 1] * c
+		var bonus: int = int(base * pct / 100.0)
+		if bonus <= 0:
+			continue
+		var dealt: int = enemy.take_damage(bonus, false, 0)
+		if dealt > 0:
+			AudioBus.play_kind_hit(k)
+			emit_signal("damage_dealt", false, dealt, k)
 
-func _make_random_sim_grid() -> Array:
-	var grid: Array = []
-	for y in range(ENEMY_SIM_BOARD_SIZE):
-		var row: Array = []
-		for x in range(ENEMY_SIM_BOARD_SIZE):
-			row.append(_enemy_rng.randi() % PieceType.SPAWNABLE_KIND_COUNT)
-		grid.append(row)
-	return grid
+func _on_invalid_swap() -> void:
+	pass
+
+# --- Special attack ------------------------------------------------------
+
+func fire_special(level_requested: int) -> Dictionary:
+	# Returns the resolved-data dict so battle.gd can play the right anim. An
+	# invalid request (mana too low, wrong level, dead actors) returns {} —
+	# battle.gd checks for that.
+	if state == State.ENDED or mana_system == null:
+		return {}
+	var charge: int = mana_system.get_charge_level()
+	if charge <= 0:
+		return {}
+	# If a higher level was requested than is currently charged, downshift to
+	# the highest the player has paid for. This is the "tap at any level burns
+	# the bar" behaviour from the spec.
+	var lvl: int = clampi(level_requested, 1, 3)
+	if lvl > charge:
+		lvl = charge
+	var spec: SpecialAttack = _load_special(lvl)
+	if spec == null:
+		return {}
+	var data: Dictionary = SpecialAttackResolver.resolve(spec, player, enemy)
+	# Burn the whole bar regardless of tier.
+	mana_system.consume_all()
+	# Apply damage / status. Animation timing belongs to battle.gd; we apply
+	# the hit immediately so the resolver can stun the enemy before the
+	# animation completes (auto-attacks pause around the spec, so a fast
+	# follow-up isn't possible anyway).
+	var dmg: int = int(data.get("damage", 0))
+	var bypass: bool = bool(data.get("bypass_armor", false))
+	if dmg > 0:
+		var dealt: int = enemy.take_damage(dmg, bypass, 0)
+		if dealt > 0:
+			AudioBus.play_kind_hit(PieceType.Kind.SWORD)
+			emit_signal("damage_dealt", false, dealt, -1)
+	var status_v: Variant = data.get("status", null)
+	if status_v != null:
+		var fx: StatusEffect = status_v
+		enemy.apply_status(fx)
+		emit_signal("status_applied", false, fx)
+	emit_signal("spec_attack_fired", lvl)
+	Haptics.heavy_tap()
+	return data
+
+func _load_special(lvl: int) -> SpecialAttack:
+	var path: String = ""
+	match lvl:
+		1: path = "res://data/special_attacks/shield_bash.tres"
+		2: path = "res://data/special_attacks/spinning_strike.tres"
+		3: path = "res://data/special_attacks/shadow_strike.tres"
+	if path == "" or not ResourceLoader.exists(path):
+		return null
+	return load(path)
+
+# --- Auto-attack relay ---------------------------------------------------
+
+func _on_player_auto_attacked(damage: int) -> void:
+	if damage > 0:
+		emit_signal("damage_dealt", false, damage, -1)
+	emit_signal("auto_attack_fired", true, damage)
+	Haptics.medium_tap()
+
+func _on_enemy_auto_attacked(damage: int) -> void:
+	if damage > 0:
+		emit_signal("damage_dealt", true, damage, -1)
+	emit_signal("auto_attack_fired", false, damage)
+	Haptics.light_tap()
+
+# --- End-of-battle plumbing ---------------------------------------------
 
 func _on_player_died(_a: CombatActor) -> void:
 	if state == State.ENDED:
 		return
 	state = State.ENDED
-	if _enemy_tick_timer != null:
-		_enemy_tick_timer.stop()
+	_stop_loops()
 	emit_signal("battle_lost")
 
 func _on_enemy_died(_a: CombatActor) -> void:
 	if state == State.ENDED:
 		return
 	state = State.ENDED
-	if _enemy_tick_timer != null:
-		_enemy_tick_timer.stop()
+	_stop_loops()
 	emit_signal("battle_won")
 
-# --- Audio helpers --------------------------------------------------------
-
-# Decide which piece kind's "voice" should colour the hit SFX. Sword wins when
-# present (it's the primary damage dealer), then bow (hp-damage emblems), then
-# staff (combo fireball damage), with shield only as a last resort.
-func _dominant_damage_kind(emblems: Array) -> int:
-	var counts := {
-		PieceType.Kind.SWORD: 0,
-		PieceType.Kind.BOW: 0,
-		PieceType.Kind.STAFF: 0,
-		PieceType.Kind.SHIELD: 0,
-	}
-	for e_v in emblems:
-		var e: Emblem = e_v
-		if counts.has(e.piece_kind):
-			counts[e.piece_kind] += 1
-	for kind in [PieceType.Kind.SWORD, PieceType.Kind.BOW, PieceType.Kind.STAFF, PieceType.Kind.SHIELD]:
-		if counts[kind] > 0:
-			return kind
-	return PieceType.Kind.SWORD
-
-# Any kind with a 3+ same-level streak is a "combo". Return the highest level
-# present so play_combo can size the stinger to it.
-func _detect_round_combo_level(emblems: Array) -> int:
-	var per_kind_level_counts: Dictionary = {}
-	for e_v in emblems:
-		var e: Emblem = e_v
-		var key := "%d.%d" % [e.piece_kind, e.level]
-		per_kind_level_counts[key] = int(per_kind_level_counts.get(key, 0)) + 1
-	var best_level: int = 0
-	for k in per_kind_level_counts.keys():
-		if int(per_kind_level_counts[k]) >= 3:
-			var parts: Array = (k as String).split(".")
-			var lvl: int = int(parts[1])
-			if lvl > best_level:
-				best_level = lvl
-	return best_level
+func _stop_loops() -> void:
+	if player_auto != null:
+		player_auto.stop()
+	if enemy_auto != null:
+		enemy_auto.stop()
+	if _status_timer != null:
+		_status_timer.stop()

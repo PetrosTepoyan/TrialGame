@@ -46,7 +46,8 @@ func _make_badge(fx: StatusEffect) -> Control:
 	row.add_child(icon_lbl)
 
 	var count := Label.new()
-	count.text = "%d" % fx.rounds_remaining
+	# Seconds-based durations as of Phase B; round to int for the badge.
+	count.text = "%ds" % int(round(fx.seconds_remaining))
 	count.add_theme_font_size_override("font_size", 28)
 	count.add_theme_color_override("font_color", Color(0.92, 0.85, 0.68, 1))
 	count.add_theme_color_override("font_outline_color", _C_INK)

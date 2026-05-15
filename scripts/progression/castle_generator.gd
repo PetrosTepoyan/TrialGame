@@ -20,18 +20,26 @@ const CHAPTER_THEMES := ["forest", "wall", "keep"]
 # baseline. Editing these tables tunes the game; the generator's API shape
 # (LevelResource fields) is unchanged.
 #
-# Index = lvl_idx (0..4). lvl_idx 0 is the FIRST level of the chapter.
-const LEVEL_HP_CURVE: Array[float] = [0.85, 1.00, 1.30, 1.55, 1.90]
-const LEVEL_DMG_CURVE: Array[float] = [0.85, 1.00, 1.20, 1.45, 1.70]
+# Index = level-in-block (0..9). 10 regular battles per checkpoint block.
+# Phase E extended the curve from 5 entries → 10 to span a full checkpoint block.
+const LEVEL_HP_CURVE: Array[float] = [0.70, 0.80, 0.90, 1.00, 1.10, 1.25, 1.40, 1.55, 1.75, 1.95]
+const LEVEL_DMG_CURVE: Array[float] = [0.70, 0.78, 0.88, 1.00, 1.12, 1.24, 1.38, 1.50, 1.62, 1.78]
 # Chapter baseline HP/dmg before per-level curve. Chapter 0 is the gentlest.
 const CHAPTER_BASE_HP: Array[float] = [55.0, 95.0, 145.0]
 const CHAPTER_BASE_DMG: Array[float] = [5.0, 8.5, 11.5]
-# Tower boss: per-chapter HP/dmg. Tuned to feel climactic without being a brick.
+# Tower boss (5th / final checkpoint of each chapter): per-chapter HP/dmg.
 const TOWER_HP_BY_CHAPTER: Array[float] = [220.0, 360.0, 520.0]
 const TOWER_DMG_BY_CHAPTER: Array[float] = [11.0, 14.0, 18.0]
+# In-chapter checkpoints (1st..4th) — smaller bosses gating each block.
+const CHECKPOINT_HP_BY_CHAPTER: Array[float] = [220.0, 320.0, 440.0]
+const CHECKPOINT_DMG_BY_CHAPTER: Array[float] = [10.0, 16.0, 23.0]
 # King: the wall.
 const KING_HP: float = 620.0
 const KING_DMG: float = 17.0
+# v2 progression: 5 blocks × 11 levels (10 regular + 1 checkpoint) per chapter.
+const BLOCKS_PER_CHAPTER := 5
+const LEVELS_PER_BLOCK := 10
+const FINAL_CHECKPOINT_IDX := 4
 
 const CHAPTER_NAMES := [
 	["The Outer Wood", "The Black Pines", "The Hunting Wood", "The Thornwood"],
@@ -135,39 +143,62 @@ static func generate(castle_index: int) -> CastleResource:
 		ch.motto = motto_pool[rng.randi() % motto_pool.size()]
 		ch.theme = CHAPTER_THEMES[ch_idx]
 		ch.levels = []
-		for lvl_idx in range(5):
-			var lvl := LevelResource.new()
-			lvl.level_name = LEVEL_NAMES[ch_idx][lvl_idx]
-			lvl.background_color = _background_for_theme(ch.theme, rng)
-			lvl.background_path = _background_path_for_chapter(ch_idx)
-			lvl.enemy_name = _enemy_name_for_chapter(ch_idx, rng)
-			lvl.enemy_sprite_path = _regular_enemy_sprite_for_chapter(ch_idx)
-			# Curve-driven HP/dmg. The per-level multiplier table ramps gently
-			# for the first two levels then accelerates into level 5.
-			var chapter_base_hp: float = CHAPTER_BASE_HP[clampi(ch_idx, 0, CHAPTER_BASE_HP.size() - 1)]
-			var chapter_base_dmg: float = CHAPTER_BASE_DMG[clampi(ch_idx, 0, CHAPTER_BASE_DMG.size() - 1)]
-			var hp_mult: float = LEVEL_HP_CURVE[clampi(lvl_idx, 0, LEVEL_HP_CURVE.size() - 1)]
-			var dmg_mult: float = LEVEL_DMG_CURVE[clampi(lvl_idx, 0, LEVEL_DMG_CURVE.size() - 1)]
-			lvl.enemy_max_hp = int(chapter_base_hp * hp_mult * castle.difficulty_multiplier)
-			lvl.enemy_damage = int(chapter_base_dmg * dmg_mult * castle.difficulty_multiplier)
-			lvl.enemy_attack_interval = 1
-			lvl.is_boss = false
-			ch.levels.append(lvl)
-		# Tower boss — climactic chapter finale.
-		var boss := LevelResource.new()
-		boss.level_name = "%s — %s" % [TOWER_NAMES[ch_idx], TOWER_BOSS_TITLES[ch_idx]]
-		boss.background_color = _background_for_theme(ch.theme, rng).darkened(0.25)
-		boss.background_path = _background_path_for_chapter(ch_idx)
-		boss.enemy_name = TOWER_BOSS_TITLES[ch_idx]
-		var tower_hp: float = TOWER_HP_BY_CHAPTER[clampi(ch_idx, 0, TOWER_HP_BY_CHAPTER.size() - 1)]
-		var tower_dmg: float = TOWER_DMG_BY_CHAPTER[clampi(ch_idx, 0, TOWER_DMG_BY_CHAPTER.size() - 1)]
-		boss.enemy_max_hp = int(tower_hp * castle.difficulty_multiplier)
-		boss.enemy_damage = int(tower_dmg * castle.difficulty_multiplier)
-		boss.enemy_attack_interval = 1
-		boss.is_boss = true
-		boss.boss_modifier = _make_boss_modifier(ch_idx, castle.difficulty_multiplier)
-		boss.enemy_sprite_path = _boss_sprite_path(ch_idx)
-		ch.levels.append(boss)
+		# 5 blocks × 11 entries (10 regular battles + 1 checkpoint). Total 55.
+		for block_idx in range(BLOCKS_PER_CHAPTER):
+			for in_block in range(LEVELS_PER_BLOCK):
+				var lvl := LevelResource.new()
+				lvl.level_name = _regular_level_name(ch_idx, block_idx, in_block, rng)
+				lvl.background_color = _background_for_theme(ch.theme, rng)
+				lvl.background_path = _background_path_for_chapter(ch_idx)
+				lvl.enemy_name = _enemy_name_for_chapter(ch_idx, rng)
+				lvl.enemy_sprite_path = _regular_enemy_sprite_for_chapter(ch_idx)
+				# Curve-driven HP/dmg. Per-level multipliers ramp across the
+				# 10-level block; block_idx layers an additional difficulty
+				# scalar so block 4 lvl 9 isn't equal to block 0 lvl 9.
+				var chapter_base_hp: float = CHAPTER_BASE_HP[clampi(ch_idx, 0, CHAPTER_BASE_HP.size() - 1)]
+				var chapter_base_dmg: float = CHAPTER_BASE_DMG[clampi(ch_idx, 0, CHAPTER_BASE_DMG.size() - 1)]
+				var hp_mult: float = LEVEL_HP_CURVE[clampi(in_block, 0, LEVEL_HP_CURVE.size() - 1)]
+				var dmg_mult: float = LEVEL_DMG_CURVE[clampi(in_block, 0, LEVEL_DMG_CURVE.size() - 1)]
+				var block_scalar: float = 1.0 + block_idx * 0.20
+				lvl.enemy_max_hp = int(chapter_base_hp * hp_mult * block_scalar * castle.difficulty_multiplier)
+				lvl.enemy_damage = int(chapter_base_dmg * dmg_mult * block_scalar * castle.difficulty_multiplier)
+				lvl.enemy_attack_interval = 1
+				lvl.is_boss = false
+				lvl.is_checkpoint = false
+				lvl.checkpoint_index = -1
+				ch.levels.append(lvl)
+			# Checkpoint level — 11th entry of each block.
+			var cp := LevelResource.new()
+			var is_final_cp: bool = block_idx == FINAL_CHECKPOINT_IDX
+			if is_final_cp:
+				cp.level_name = "%s — %s" % [TOWER_NAMES[ch_idx], TOWER_BOSS_TITLES[ch_idx]]
+				cp.enemy_name = TOWER_BOSS_TITLES[ch_idx]
+				cp.enemy_sprite_path = _boss_sprite_path(ch_idx)
+				var tower_hp: float = TOWER_HP_BY_CHAPTER[clampi(ch_idx, 0, TOWER_HP_BY_CHAPTER.size() - 1)]
+				var tower_dmg: float = TOWER_DMG_BY_CHAPTER[clampi(ch_idx, 0, TOWER_DMG_BY_CHAPTER.size() - 1)]
+				cp.enemy_max_hp = int(tower_hp * castle.difficulty_multiplier)
+				cp.enemy_damage = int(tower_dmg * castle.difficulty_multiplier)
+				cp.is_boss = true
+				cp.boss_modifier = _make_boss_modifier(ch_idx, castle.difficulty_multiplier)
+			else:
+				cp.level_name = _in_chapter_checkpoint_name(ch_idx, block_idx)
+				cp.enemy_name = _checkpoint_enemy_name(ch_idx, block_idx, rng)
+				cp.enemy_sprite_path = _boss_sprite_path(ch_idx)
+				var cp_hp_base: float = CHECKPOINT_HP_BY_CHAPTER[clampi(ch_idx, 0, CHECKPOINT_HP_BY_CHAPTER.size() - 1)]
+				var cp_dmg_base: float = CHECKPOINT_DMG_BY_CHAPTER[clampi(ch_idx, 0, CHECKPOINT_DMG_BY_CHAPTER.size() - 1)]
+				var cp_scalar: float = (block_idx + 1) * 0.1 + 1.0
+				cp.enemy_max_hp = int(cp_hp_base * cp_scalar * castle.difficulty_multiplier)
+				cp.enemy_damage = int(cp_dmg_base * cp_scalar * castle.difficulty_multiplier)
+				cp.is_boss = false
+				cp.boss_modifier = _make_boss_modifier(ch_idx, castle.difficulty_multiplier * 0.7)
+			cp.background_color = _background_for_theme(ch.theme, rng).darkened(0.25)
+			cp.background_path = _background_path_for_chapter(ch_idx)
+			cp.enemy_attack_interval = 1
+			cp.is_checkpoint = true
+			cp.checkpoint_index = block_idx
+			# TODO Phase G: attach EncounterModifier for chapter 1 checkpoint levels
+			# (CP1 garrison, CP2 archers, CP3 catacombs, CP4 pier, CP5 supply caravan).
+			ch.levels.append(cp)
 		castle.chapters.append(ch)
 
 	# King
@@ -215,6 +246,30 @@ static func _regular_enemy_sprite_for_chapter(ch_idx: int) -> String:
 static func _enemy_name_for_chapter(ch_idx: int, rng: RandomNumberGenerator) -> String:
 	var pool: Array = ENEMY_NAMES[ch_idx]
 	return pool[rng.randi() % pool.size()]
+
+static func _regular_level_name(ch_idx: int, block_idx: int, in_block: int, rng: RandomNumberGenerator) -> String:
+	# Reuse the 5-name pool seeded with block_idx so each block reads as a
+	# fresh stage. The in-block index becomes a small numeric suffix.
+	var pool: Array = LEVEL_NAMES[ch_idx]
+	var base: String = pool[(block_idx + in_block) % pool.size()]
+	# Pick a deterministic but flavorful suffix per (block, in_block).
+	return "%s — %d-%d" % [base, block_idx + 1, in_block + 1]
+
+static func _in_chapter_checkpoint_name(ch_idx: int, block_idx: int) -> String:
+	# Reads "Forward Garrison — Block 1 Checkpoint" etc. Tower boss (block 4)
+	# is handled separately and named after its warden.
+	var pool: Array = ["Forward Garrison", "Wall Archers", "Catacombs", "Naval Pier", "Supply Caravan"]
+	var base: String = pool[clampi(block_idx, 0, pool.size() - 1)]
+	if ch_idx != 0:
+		# Outside chapter 1 these labels are placeholder — keep neutral.
+		base = "Checkpoint %d" % (block_idx + 1)
+	return base
+
+static func _checkpoint_enemy_name(ch_idx: int, block_idx: int, rng: RandomNumberGenerator) -> String:
+	# In-chapter checkpoints get an "elite" version of a regular enemy.
+	var pool: Array = ENEMY_NAMES[ch_idx]
+	var base: String = pool[(block_idx + rng.randi()) % pool.size()]
+	return "Elite %s" % base
 
 static func _background_for_theme(theme: String, rng: RandomNumberGenerator) -> Color:
 	match theme:

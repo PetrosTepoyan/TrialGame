@@ -9,6 +9,12 @@ const _C_PARCHMENT := Color(0.92, 0.85, 0.68)
 const _C_GOLD := Color(0.95, 0.78, 0.30)
 const _C_GOLD_DIM := Color(0.55, 0.40, 0.18)
 const _C_GOLD_HOVER := Color(1, 0.92, 0.55)
+const _C_LOCKED := Color(0.45, 0.38, 0.30, 0.55)
+
+# Block-progress flag glyphs.
+const _FLAG_CLEARED := "⚑"
+const _FLAG_CURRENT := "⚐"
+const _FLAG_LOCKED := "·"
 
 @onready var _title: Label = $TopBar/Title
 @onready var _subtitle: Label = $TopBar/Subtitle
@@ -76,7 +82,7 @@ func _build_chapter_card(ch_idx: int, chapter: ChapterResource) -> Control:
 
 	# Theme thumbnail on the left.
 	var thumb := TextureRect.new()
-	thumb.custom_minimum_size = Vector2(220, 180)
+	thumb.custom_minimum_size = Vector2(220, 220)
 	thumb.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	thumb.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
 	var tex_path: String = _theme_texture_path(chapter.theme)
@@ -85,7 +91,7 @@ func _build_chapter_card(ch_idx: int, chapter: ChapterResource) -> Control:
 	thumb.modulate = Color(0.85, 0.78, 0.74, 1.0)
 	row.add_child(thumb)
 
-	# Right column: title, motto, level buttons.
+	# Right column: title, motto, block rails.
 	var v := VBoxContainer.new()
 	v.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	v.add_theme_constant_override("separation", 6)
@@ -108,50 +114,168 @@ func _build_chapter_card(ch_idx: int, chapter: ChapterResource) -> Control:
 		motto.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		v.add_child(motto)
 
+	# Checkpoint progress flags — one glyph per block, shows at-a-glance which
+	# blocks have been cleared, which is current, and which are locked.
+	v.add_child(_build_checkpoint_flag_strip(ch_idx))
+
 	var spacer := Control.new()
 	spacer.custom_minimum_size = Vector2(0, 6)
 	v.add_child(spacer)
 
-	# Level buttons row — each level is a circular medallion with stars below.
+	# Render only the rails relevant to the player. Cleared blocks remain
+	# tappable for replay (dimmed), the current block is fully interactive
+	# (10 medallions + checkpoint boss), future blocks are stubs with a lock.
 	var unlocked_chapter: bool = GameState.is_chapter_unlocked(GameState.castle_index, ch_idx)
-	var btn_row := HBoxContainer.new()
-	btn_row.add_theme_constant_override("separation", 14)
-	btn_row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	btn_row.alignment = BoxContainer.ALIGNMENT_CENTER
-	v.add_child(btn_row)
-	for lvl_idx in range(chapter.levels.size()):
-		var lvl: LevelResource = chapter.levels[lvl_idx]
-		var cell := _build_level_cell(ch_idx, lvl_idx, lvl)
-		btn_row.add_child(cell)
-		if not unlocked_chapter:
-			var medallion: Button = cell.get_node_or_null(^"Medallion") as Button
-			if medallion != null:
-				medallion.disabled = true
+	var is_current_chapter: bool = ch_idx == GameState.chapter_index
+	for block_idx in range(GameState.BLOCKS_PER_CHAPTER):
+		var rail := _build_block_rail(ch_idx, block_idx, chapter, unlocked_chapter, is_current_chapter)
+		v.add_child(rail)
 
 	return card
 
-func _build_level_cell(ch_idx: int, lvl_idx: int, lvl: LevelResource) -> Control:
+func _build_checkpoint_flag_strip(ch_idx: int) -> Control:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 12)
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	var header := Label.new()
+	header.text = "Checkpoints:"
+	header.add_theme_font_size_override("font_size", 22)
+	header.add_theme_color_override("font_color", Color(0.78, 0.70, 0.54, 0.85))
+	row.add_child(header)
+	for block_idx in range(GameState.BLOCKS_PER_CHAPTER):
+		var glyph := Label.new()
+		glyph.add_theme_font_size_override("font_size", 30)
+		var cleared: bool = GameState.has_checkpoint_cleared(ch_idx, block_idx)
+		var is_current: bool = (
+			ch_idx == GameState.chapter_index
+			and block_idx == GameState.current_block_index
+			and not cleared
+		)
+		if cleared:
+			glyph.text = _FLAG_CLEARED
+			glyph.add_theme_color_override("font_color", _C_GOLD)
+		elif is_current:
+			glyph.text = _FLAG_CURRENT
+			glyph.add_theme_color_override("font_color", _C_GOLD_HOVER)
+		else:
+			glyph.text = _FLAG_LOCKED
+			glyph.add_theme_color_override("font_color", _C_LOCKED)
+		row.add_child(glyph)
+	return row
+
+func _build_block_rail(
+	ch_idx: int,
+	block_idx: int,
+	chapter: ChapterResource,
+	chapter_unlocked: bool,
+	is_current_chapter: bool,
+) -> Control:
+	var cleared_block: bool = GameState.has_checkpoint_cleared(ch_idx, block_idx)
+	var current_block: bool = is_current_chapter and block_idx == GameState.current_block_index and not cleared_block
+	var future_block: bool = not cleared_block and not current_block
+
+	# Locked / future blocks get a compact stub row with a chain icon.
+	if future_block or not chapter_unlocked:
+		return _build_locked_rail_stub(block_idx)
+
+	var rail := HBoxContainer.new()
+	rail.add_theme_constant_override("separation", 8)
+	rail.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	rail.alignment = BoxContainer.ALIGNMENT_CENTER
+
+	# Block label on the left.
+	var block_label := Label.new()
+	block_label.text = "B%d" % (block_idx + 1)
+	block_label.custom_minimum_size = Vector2(50, 0)
+	block_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	block_label.add_theme_font_size_override("font_size", 26)
+	block_label.add_theme_color_override("font_color", _C_GOLD if (current_block or cleared_block) else _C_LOCKED)
+	rail.add_child(block_label)
+
+	# Build 10 regular medallions + 1 checkpoint boss medallion.
+	# Cleared block: all 11 entries unlocked (replay).
+	# Current block: only up to current_level_in_block.
+	# GameState.LEVELS_PER_BLOCK already = 11 (10 regular + checkpoint).
+	for in_block in range(GameState.LEVELS_PER_BLOCK):
+		var flat: int = block_idx * GameState.LEVELS_PER_BLOCK + in_block
+		if flat >= chapter.levels.size():
+			break
+		var lvl: LevelResource = chapter.levels[flat]
+		var cell := _build_level_cell(ch_idx, block_idx, in_block, lvl, cleared_block, current_block)
+		rail.add_child(cell)
+
+	# Replay-only rail: dim the whole thing so it visually recedes.
+	if cleared_block and not current_block:
+		rail.modulate = Color(1, 1, 1, 0.65)
+
+	return rail
+
+func _build_locked_rail_stub(block_idx: int) -> Control:
+	var stub := PanelContainer.new()
+	stub.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(0.04, 0.03, 0.06, 0.55)
+	sb.border_color = _C_LOCKED
+	sb.border_width_left = 1
+	sb.border_width_right = 1
+	sb.border_width_top = 1
+	sb.border_width_bottom = 1
+	sb.corner_radius_top_left = 4
+	sb.corner_radius_top_right = 4
+	sb.corner_radius_bottom_left = 4
+	sb.corner_radius_bottom_right = 4
+	sb.content_margin_left = 10
+	sb.content_margin_right = 10
+	sb.content_margin_top = 6
+	sb.content_margin_bottom = 6
+	stub.add_theme_stylebox_override("panel", sb)
+	var lbl := Label.new()
+	lbl.text = "⛓  Block %d — sealed" % (block_idx + 1)
+	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lbl.add_theme_font_size_override("font_size", 24)
+	lbl.add_theme_color_override("font_color", _C_LOCKED)
+	stub.add_child(lbl)
+	return stub
+
+func _build_level_cell(
+	ch_idx: int,
+	block_idx: int,
+	in_block: int,
+	lvl: LevelResource,
+	cleared_block: bool,
+	current_block: bool,
+) -> Control:
 	# Vertical stack: medallion button on top, stars (or lock) underneath.
 	var cell := VBoxContainer.new()
 	cell.alignment = BoxContainer.ALIGNMENT_CENTER
 	cell.add_theme_constant_override("separation", 4)
-	cell.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 
-	var btn := _build_level_button(ch_idx, lvl_idx, lvl)
+	var btn := _build_level_button(ch_idx, block_idx, in_block, lvl)
 	btn.name = "Medallion"
 	var btn_wrap := CenterContainer.new()
-	btn_wrap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	btn_wrap.add_child(btn)
 	cell.add_child(btn_wrap)
 
-	var unlocked: bool = GameState.is_level_unlocked(GameState.castle_index, ch_idx, lvl_idx)
-	var completed: bool = GameState.is_level_completed(GameState.castle_index, ch_idx, lvl_idx)
+	# Unlock rules:
+	#  - Cleared block: every level tappable (replay).
+	#  - Current block: only the next-up level is unlocked.
+	var unlocked: bool
+	if cleared_block:
+		unlocked = true
+	elif current_block:
+		unlocked = in_block <= GameState.current_level_in_block
+	else:
+		unlocked = false
+	btn.disabled = not unlocked
+
+	var flat_lvl: int = block_idx * GameState.LEVELS_PER_BLOCK + in_block
+	var completed: bool = GameState.is_level_completed(GameState.castle_index, ch_idx, flat_lvl)
 
 	var stars_lbl := Label.new()
 	stars_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	stars_lbl.add_theme_font_size_override("font_size", 26)
+	stars_lbl.add_theme_font_size_override("font_size", 20)
 	if completed:
-		var stars: int = GameState.get_level_stars(GameState.castle_index, ch_idx, lvl_idx)
+		var stars: int = GameState.get_level_stars(GameState.castle_index, ch_idx, flat_lvl)
 		var star_str := ""
 		for s in range(stars):
 			star_str += "★"
@@ -159,8 +283,6 @@ func _build_level_cell(ch_idx: int, lvl_idx: int, lvl: LevelResource) -> Control
 			star_str += "☆"
 		stars_lbl.text = star_str
 		stars_lbl.add_theme_color_override("font_color", _C_GOLD)
-		stars_lbl.add_theme_color_override("font_outline_color", _C_INK)
-		stars_lbl.add_theme_constant_override("outline_size", 3)
 	elif not unlocked:
 		stars_lbl.text = "🔒"
 		stars_lbl.add_theme_color_override("font_color", Color(0.55, 0.45, 0.40, 0.85))
@@ -170,37 +292,35 @@ func _build_level_cell(ch_idx: int, lvl_idx: int, lvl: LevelResource) -> Control
 	cell.add_child(stars_lbl)
 	return cell
 
-func _build_level_button(ch_idx: int, lvl_idx: int, lvl: LevelResource) -> Button:
+func _build_level_button(ch_idx: int, block_idx: int, in_block: int, lvl: LevelResource) -> Button:
 	var btn := Button.new()
-	# Medallions are squarish — large corner radius makes them read as circular
-	# without needing a 2D shader (iOS GL Compatibility-safe).
-	var unlocked: bool = GameState.is_level_unlocked(GameState.castle_index, ch_idx, lvl_idx)
-	var completed: bool = GameState.is_level_completed(GameState.castle_index, ch_idx, lvl_idx)
-
-	var size: Vector2 = Vector2(132, 132)
-	if lvl.is_boss:
-		size = Vector2(168, 132)
+	# Smaller medallions than v1 (10 fit on screen vs 5). Checkpoint medallion
+	# stays slightly larger and uses the boss glyph.
+	var is_checkpoint: bool = lvl.is_checkpoint or lvl.is_boss
+	var size: Vector2 = Vector2(72, 72)
+	if is_checkpoint:
+		size = Vector2(90, 72)
 	btn.custom_minimum_size = size
 
 	var label: String
-	if lvl.is_boss:
+	if is_checkpoint:
 		label = "⚔"
-		btn.add_theme_font_size_override("font_size", 64)
+		btn.add_theme_font_size_override("font_size", 38)
 	else:
-		label = "%d" % (lvl_idx + 1)
-		btn.add_theme_font_size_override("font_size", 56)
+		label = "%d" % (in_block + 1)
+		btn.add_theme_font_size_override("font_size", 32)
 	btn.text = label
 
-	# Per-state stylebox — medallions get their own look so the row reads as
-	# discrete coin-like buttons rather than the default rounded rectangles.
-	btn.add_theme_stylebox_override("normal", _medallion_style(_medallion_bg(completed, lvl.is_boss), _C_GOLD, 3, 64))
-	btn.add_theme_stylebox_override("hover", _medallion_style(_medallion_bg(completed, lvl.is_boss).lightened(0.10), _C_GOLD_HOVER, 3, 64))
-	btn.add_theme_stylebox_override("pressed", _medallion_style(_C_GOLD, _C_GOLD_DIM, 3, 64))
-	btn.add_theme_stylebox_override("disabled", _medallion_style(Color(0.10, 0.08, 0.12, 0.70), Color(0.45, 0.38, 0.25, 0.55), 2, 64))
-	btn.add_theme_stylebox_override("focus", _focus_ring(_C_GOLD_HOVER, 64))
+	# Per-state stylebox — medallions get their own look.
+	var flat_lvl: int = block_idx * GameState.LEVELS_PER_BLOCK + in_block
+	var completed: bool = GameState.is_level_completed(GameState.castle_index, ch_idx, flat_lvl)
+	btn.add_theme_stylebox_override("normal", _medallion_style(_medallion_bg(completed, is_checkpoint), _C_GOLD, 3, 36))
+	btn.add_theme_stylebox_override("hover", _medallion_style(_medallion_bg(completed, is_checkpoint).lightened(0.10), _C_GOLD_HOVER, 3, 36))
+	btn.add_theme_stylebox_override("pressed", _medallion_style(_C_GOLD, _C_GOLD_DIM, 3, 36))
+	btn.add_theme_stylebox_override("disabled", _medallion_style(Color(0.10, 0.08, 0.12, 0.70), Color(0.45, 0.38, 0.25, 0.55), 2, 36))
+	btn.add_theme_stylebox_override("focus", _focus_ring(_C_GOLD_HOVER, 36))
 
-	# Per-state font colors. Boss medallions use a brighter gold to read as elite.
-	if lvl.is_boss:
+	if is_checkpoint:
 		btn.add_theme_color_override("font_color", _C_GOLD)
 		btn.add_theme_color_override("font_hover_color", _C_GOLD_HOVER)
 	else:
@@ -209,16 +329,13 @@ func _build_level_button(ch_idx: int, lvl_idx: int, lvl: LevelResource) -> Butto
 	btn.add_theme_color_override("font_pressed_color", _C_INK)
 	btn.add_theme_color_override("font_disabled_color", Color(0.55, 0.45, 0.40, 0.6))
 	btn.add_theme_color_override("font_outline_color", _C_INK)
-	btn.add_theme_constant_override("outline_size", 4)
+	btn.add_theme_constant_override("outline_size", 3)
 
-	btn.disabled = not unlocked
 	btn.tooltip_text = "%s — %s (HP %d, dmg %d)" % [lvl.level_name, lvl.enemy_name, lvl.enemy_max_hp, lvl.enemy_damage]
-	btn.pressed.connect(_on_level_pressed.bind(ch_idx, lvl_idx))
+	btn.pressed.connect(_on_level_pressed.bind(ch_idx, block_idx, in_block))
 	return btn
 
 func _medallion_bg(completed: bool, is_boss: bool) -> Color:
-	# Conquered cells subtly glow gold; boss medallions sit a touch deeper in
-	# tone so the eye picks them out as the chapter's anchor.
 	if completed:
 		return Color(0.30, 0.22, 0.10, 0.95)
 	if is_boss:
@@ -237,12 +354,12 @@ func _medallion_style(bg: Color, border: Color, border_w: int, radius: int) -> S
 	sb.corner_radius_top_right = radius
 	sb.corner_radius_bottom_left = radius
 	sb.corner_radius_bottom_right = radius
-	sb.content_margin_left = 8.0
-	sb.content_margin_right = 8.0
-	sb.content_margin_top = 6.0
-	sb.content_margin_bottom = 6.0
+	sb.content_margin_left = 6.0
+	sb.content_margin_right = 6.0
+	sb.content_margin_top = 4.0
+	sb.content_margin_bottom = 4.0
 	sb.shadow_color = Color(0, 0, 0, 0.55)
-	sb.shadow_size = 6
+	sb.shadow_size = 4
 	return sb
 
 func _focus_ring(c: Color, radius: int) -> StyleBoxFlat:
@@ -266,16 +383,17 @@ func _theme_texture_path(theme_id: String) -> String:
 		"keep": return "res://assets/backgrounds/keep.png"
 	return ""
 
-func _on_level_pressed(ch_idx: int, lvl_idx: int) -> void:
+func _on_level_pressed(ch_idx: int, block_idx: int, in_block: int) -> void:
 	AudioBus.play_ui_click()
 	Haptics.light_tap()
-	GameState.set_current_pointer(ch_idx, lvl_idx)
+	GameState.set_current_pointer(ch_idx, block_idx, in_block)
 	SceneRouter.goto_battle()
 
 func _on_king_pressed() -> void:
 	AudioBus.play_ui_click()
 	Haptics.medium_tap()
-	GameState.set_current_pointer(3, 0)
+	# King pointer: chapter_index = 3 keeps "is_current_level_king" true.
+	GameState.set_current_pointer(3, 0, 0)
 	SceneRouter.goto_battle()
 
 func _on_back() -> void:

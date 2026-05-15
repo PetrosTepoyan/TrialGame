@@ -12,6 +12,12 @@ signal cascade_finished(total_matches: int, cascade_depth: int)
 signal invalid_swap
 signal shuffle_started
 signal shuffle_finished
+# Phase D: emitted once per resolved batch with the cells the player just
+# matched away. ItemPieces on the board listen and tick integrity by adjacency.
+signal match_cleared_cells(cells: Array)
+# Phase D: emitted when an ItemPiece's integrity reaches 0. CombatController
+# subscribes and routes through ItemEffects.
+signal item_broken(item: BoardItem, pos: Vector2i)
 
 const ROWS := 9
 const COLS := 9
@@ -60,14 +66,29 @@ var _hint_timer: float = HINT_IDLE_SECONDS
 var _hint_pieces: Array[Piece] = []
 var _hint_tweens: Array[Tween] = []
 
+# Phase D items. Spawner is owned as a child so encounter code can fetch and
+# tweak its forced weights. MAX_ITEMS_ON_BOARD caps concurrent clutter — at 3,
+# the player still has plenty of non-item cells to plan around on 9×9.
+const MAX_ITEMS_ON_BOARD: int = 3
+var _item_spawner: ItemSpawner = null
+var _items_on_board: Array[ItemPiece] = []
+
 func _ready() -> void:
 	_rng.randomize()
 	_piece_layer = Node2D.new()
 	_piece_layer.name = "Pieces"
 	add_child(_piece_layer)
+	_item_spawner = ItemSpawner.new()
+	_item_spawner.name = "ItemSpawner"
+	add_child(_item_spawner)
 	if piece_types.is_empty():
 		piece_types = _default_piece_types()
 	populate_new_board()
+
+# Public accessor so CombatController / encounters can wire the HP provider
+# and override item weights without poking at private state.
+func get_item_spawner() -> ItemSpawner:
+	return _item_spawner
 
 func _default_piece_types() -> Array[PieceType]:
 	# Fallback when designer hasn't wired .tres files in the editor. Values

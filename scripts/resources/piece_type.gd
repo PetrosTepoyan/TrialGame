@@ -6,8 +6,8 @@ extends Resource
 #   match-3 -> Level 1
 #   match-4 -> Level 2
 #   match-5+ -> Level 3
-# A match emits an Emblem(kind, level) onto the action scale. When the scale is
-# full (5 emblems) the round resolves and emblems apply their effects.
+# A match fires its piece-kind's effect immediately via MatchEffectApplier and
+# also feeds the player's mana bar (see CombatController.mana_for_match).
 #
 # RAINBOW is a special 5th kind that is never placed at startup/shuffle. It only
 # spawns occasionally during refill (see Board.SPECIAL_RAINBOW_CHANCE). When it
@@ -28,7 +28,7 @@ static func is_special(k: int) -> bool:
 @export var sprite_path: String = ""
 
 # Per-level effect values, indexed [1..3]. Each kind interprets these slightly
-# differently — see AbilityResolver for the per-kind logic.
+# differently — see MatchEffectApplier for the per-kind logic.
 #
 # Sword:          level_values = [10, 12, 15]          (raw damage)
 # Shield:         level_armor  = [1, 3, 5]             (armor per emblem)

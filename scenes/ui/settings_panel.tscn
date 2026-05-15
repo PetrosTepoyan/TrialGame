@@ -95,6 +95,19 @@ theme_override_font_sizes/font_size = 38
 [node name="Spacer" type="Control" parent="VBox"]
 custom_minimum_size = Vector2(0, 16)
 
+[node name="RunSection" type="Label" parent="VBox"]
+text = "RUN"
+theme_override_font_sizes/font_size = 28
+theme_override_colors/font_color = Color(0.95, 0.78, 0.30, 1)
+
+[node name="StartFreshRun" type="Button" parent="VBox"]
+custom_minimum_size = Vector2(0, 88)
+text = "Start Fresh Run"
+theme_override_font_sizes/font_size = 38
+
+[node name="Spacer2" type="Control" parent="VBox"]
+custom_minimum_size = Vector2(0, 8)
+
 [node name="Close" type="Button" parent="VBox"]
 custom_minimum_size = Vector2(0, 108)
 text = "Close"

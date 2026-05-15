@@ -1,13 +1,13 @@
 class_name RoundExecuteBurst
 extends Node2D
 
-# Dramatic ring/star burst that fires when the action scale fills and a round
-# resolves. Drawn from the centre of the action scale. Each emblem in the
-# scale pulses outward as a colored "embed" point.
+# Phase B repurpose: ring/star burst played from the player position when a
+# spec attack fires. Caller passes 1-3 colors (one per tier pip) — the burst
+# spreads them around the ring.
 #
 # Usage:
-#   RoundExecuteBurst.spawn(center_world, viewport_size, emblem_colors, parent)
-#   where emblem_colors is Array[Color], one per active emblem.
+#   RoundExecuteBurst.spawn(center_world, viewport_size, colors, parent)
+#   where colors is Array[Color].
 
 const DURATION: float = 0.70
 const STAR_DURATION: float = 0.40

@@ -28,6 +28,8 @@ func _ready() -> void:
 	RenderingServer.set_default_clear_color(Color(0.07, 0.05, 0.09))
 	_rng.randomize()
 	_play_button.pressed.connect(_on_play_pressed)
+	# Phase E rename: "Start Fresh Run" is the canonical voluntary-reset action.
+	_reset_button.text = "Start Fresh Run"
 	_reset_button.pressed.connect(_on_reset_pressed)
 	_quit_button.pressed.connect(_on_quit_pressed)
 	_settings_button.pressed.connect(_on_settings_pressed)
@@ -48,6 +50,10 @@ func _ready() -> void:
 	_start_torch_flicker()
 	_start_flavor_rotation()
 	_fade_in_flavor()
+
+	# v2 save-format wipe notice. Shown once, then dismissed.
+	if not GameState.save_v1_wipe_notice_shown:
+		call_deferred("_show_save_wipe_banner")
 
 func _start_title_pulse() -> void:
 	# Gentle glow on the title — modulate alpha drifts between two values.
@@ -102,7 +108,43 @@ func _on_play_pressed() -> void:
 func _on_reset_pressed() -> void:
 	AudioBus.play_ui_click()
 	Haptics.light_tap()
+	_show_reset_confirmation()
+
+func _show_reset_confirmation() -> void:
+	# Use ConfirmationDialog so we get cross-platform OK/Cancel without bespoke
+	# UI. Same dialog wording works for the in-battle settings panel too.
+	var d := ConfirmationDialog.new()
+	d.dialog_text = "Start a fresh run? This deletes all progress."
+	d.title = "Start Fresh Run"
+	d.ok_button_text = "Start Fresh"
+	d.get_cancel_button().text = "Cancel"
+	add_child(d)
+	d.confirmed.connect(_on_reset_confirmed.bind(d))
+	d.canceled.connect(func() -> void: d.queue_free())
+	d.popup_centered()
+
+func _on_reset_confirmed(d: ConfirmationDialog) -> void:
 	GameState.reset_save()
+	d.queue_free()
+	# Reload the menu so its widgets reflect the freshly-wiped state.
+	SceneRouter.goto_main_menu()
+
+func _show_save_wipe_banner() -> void:
+	# One-time banner after a v1 → v2 save migration. Acknowledgement dismisses
+	# the flag so the player only sees it once.
+	var d := AcceptDialog.new()
+	d.dialog_text = "Save format updated for new game version — fresh start required."
+	d.title = "Save Reset"
+	add_child(d)
+	d.confirmed.connect(func() -> void:
+		GameState.dismiss_save_wipe_notice()
+		d.queue_free()
+	)
+	d.canceled.connect(func() -> void:
+		GameState.dismiss_save_wipe_notice()
+		d.queue_free()
+	)
+	d.popup_centered()
 
 func _on_quit_pressed() -> void:
 	AudioBus.play_ui_click()

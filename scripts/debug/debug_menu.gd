@@ -18,7 +18,6 @@ var _tab_container: TabContainer = null
 
 # Cheat state polled in _process.
 var _invincible: bool = false
-var _always_full_scale: bool = false
 var _last_player_hp: int = -1
 
 # Stats labels (rebuilt each frame in the Stats tab).
@@ -161,8 +160,7 @@ func _build_combat_tab() -> ScrollContainer:
 	var vbox := _tab_content(scroll)
 
 	vbox.add_child(_section_header("Live (applies mid-battle)"))
-	# CombatController re-reads these on every enemy tick.
-	_add_spin_row(vbox, "Enemy tick (s)", "combat.enemy_tick_seconds", 2.0, 0.2, 10.0, 0.1)
+	# CombatController re-reads these in its debug-override pump.
 	_add_spin_row(vbox, "Enemy damage", "combat.enemy_damage", 6, 0, 999, 1)
 
 	vbox.add_child(_section_header("Stored (next battle)"))
@@ -173,8 +171,7 @@ func _build_combat_tab() -> ScrollContainer:
 
 	_add_button(vbox, "Heal player to full", _on_heal_player)
 	_add_button(vbox, "Kill enemy", _on_kill_enemy)
-	_add_button(vbox, "Stun enemy 99 rounds", _on_stun_enemy)
-	_add_button(vbox, "Fill enemy action scale", _on_fill_scale)
+	_add_button(vbox, "Stun enemy 99s", _on_stun_enemy)
 
 	return scroll
 
@@ -329,11 +326,6 @@ func _build_cheats_tab() -> ScrollContainer:
 		if _overlay:
 			_overlay.set_override("cheat.invincible", state)
 	)
-	_add_check(vbox, "Always-full action scale", _always_full_scale, func(state: bool) -> void:
-		_always_full_scale = state
-		if _overlay:
-			_overlay.set_override("cheat.always_full_scale", state)
-	)
 	_add_button(vbox, "Kill enemy now", _on_kill_enemy)
 	return scroll
 
@@ -464,19 +456,14 @@ func _build_stats_text() -> String:
 			lines.append("Player HP: %s / %s" % [str(_get_actor_hp(player)), str(_get_actor_max_hp(player))])
 		if enemy:
 			lines.append("Enemy HP: %s / %s" % [str(_get_actor_hp(enemy)), str(_get_actor_max_hp(enemy))])
-		# action_scale lives on the controller in this codebase.
-		if "action_scale" in cc:
-			var p_scale_v: Variant = cc.get("action_scale")
-			if p_scale_v is Array:
-				lines.append("Player scale: %d / %s" % [(p_scale_v as Array).size(), str(_get_const(cc, "SCALE_CAPACITY", 5))])
-		if "enemy_action_scale" in cc:
-			var e_scale_v: Variant = cc.get("enemy_action_scale")
-			if e_scale_v is Array:
-				lines.append("Enemy scale: %d / %s" % [(e_scale_v as Array).size(), str(_get_const(cc, "SCALE_CAPACITY", 5))])
-		if "_player_round_count" in cc:
-			lines.append("Player rounds: %s" % str(cc.get("_player_round_count")))
-		if "_enemy_round_count" in cc:
-			lines.append("Enemy rounds: %s" % str(cc.get("_enemy_round_count")))
+		# Mana + charge level surfaced from the ManaSystem child.
+		if "mana_system" in cc:
+			var ms_v: Variant = cc.get("mana_system")
+			if ms_v is Node and ms_v != null:
+				var mana_val: int = int(ms_v.get("mana"))
+				lines.append("Mana: %d / %d" % [mana_val, int(ManaSystem.MAX_MANA)])
+				if ms_v.has_method("get_charge_level"):
+					lines.append("Charge level: %d" % int(ms_v.call("get_charge_level")))
 	return "\n".join(lines)
 
 
@@ -491,7 +478,7 @@ func _get_const(n: Node, key: String, default_v: Variant) -> Variant:
 
 
 func _apply_cheats() -> void:
-	if not _invincible and not _always_full_scale:
+	if not _invincible:
 		return
 	var cc: Node = _find_combat_controller()
 	if cc == null:
@@ -513,10 +500,6 @@ func _apply_cheats() -> void:
 					player.set("current_hp", _last_player_hp)
 			else:
 				_last_player_hp = hp
-	if _always_full_scale:
-		var player := _get_actor_from_cc(cc, "player")
-		if player:
-			_fill_actor_scale(player)
 
 
 # ---- Combat lookup helpers -------------------------------------------------
@@ -589,32 +572,6 @@ func _get_actor_max_hp(actor: Node) -> int:
 	return -1
 
 
-func _get_actor_scale_size(actor: Node) -> int:
-	for k in ["action_scale_size", "scale_size", "action_scale_max"]:
-		if k in actor:
-			return int(actor.get(k))
-	if "action_scale" in actor:
-		var v: Variant = actor.get("action_scale")
-		if v is Array:
-			return (v as Array).size()
-	return -1
-
-
-func _fill_actor_scale(actor: Node) -> void:
-	if "action_scale" in actor:
-		var arr_v: Variant = actor.get("action_scale")
-		if arr_v is Array:
-			var arr: Array = arr_v
-			var target: int = _get_actor_scale_size(actor)
-			if target <= 0:
-				target = 5
-			while arr.size() < target:
-				arr.append(0)
-			actor.set("action_scale", arr)
-			if actor.has_signal("emblem_added"):
-				actor.emit_signal("emblem_added")
-
-
 # ---- Button callbacks ------------------------------------------------------
 
 func _on_close_pressed() -> void:
@@ -678,50 +635,22 @@ func _on_stun_enemy() -> void:
 	var e := _get_actor_from_cc(cc, "enemy")
 	if e == null:
 		return
-	# Prefer the StatusEffect resource path.
+	# Phase B: STUN is seconds-based; 99s effectively means "stunned forever".
 	var StatusEffectScript: Script = load("res://scripts/resources/status_effect.gd")
-	if StatusEffectScript and e.has_method("apply_effect"):
+	if StatusEffectScript and e.has_method("apply_status"):
 		var consts: Dictionary = StatusEffectScript.get_script_constant_map()
 		var kind_enum: Variant = consts.get("Kind", null)
 		if typeof(kind_enum) == TYPE_DICTIONARY:
 			var k: Dictionary = kind_enum
 			if k.has("STUN"):
-				var fx: Object = StatusEffectScript.new(k["STUN"], 99, 0, 0)
-				e.call("apply_effect", fx)
+				var fx: Object = StatusEffectScript.new(k["STUN"], 99.0, 0, 0)
+				e.call("apply_status", fx)
 				return
 	# Fallbacks.
 	if e.has_method("apply_stun"):
 		e.call("apply_stun", 99)
-	elif "stun_rounds" in e:
-		e.set("stun_rounds", 99)
-
-
-func _on_fill_scale() -> void:
-	var cc := _find_combat_controller()
-	if cc == null:
-		return
-	# Push 5 emblems directly into the controller's enemy_action_scale.
-	if not ("enemy_action_scale" in cc):
-		return
-	var arr_v: Variant = cc.get("enemy_action_scale")
-	if not (arr_v is Array):
-		return
-	var arr: Array = arr_v
-	var cap: int = int(_get_const(cc, "SCALE_CAPACITY", 5))
-	var EmblemScript: Script = load("res://scripts/resources/emblem.gd")
-	# Pick any piece kind.
-	var kind_value: int = 0
-	while arr.size() < cap:
-		var fake_emblem: Variant = null
-		if EmblemScript:
-			# Try various constructors gracefully.
-			fake_emblem = EmblemScript.new()
-			if "kind" in fake_emblem:
-				fake_emblem.set("kind", kind_value)
-		arr.append(fake_emblem)
-		if cc.has_signal("enemy_emblem_added"):
-			cc.emit_signal("enemy_emblem_added", fake_emblem, arr.size())
-	cc.set("enemy_action_scale", arr)
+	elif "stun_seconds" in e:
+		e.set("stun_seconds", 99.0)
 
 
 func _on_reshuffle() -> void:

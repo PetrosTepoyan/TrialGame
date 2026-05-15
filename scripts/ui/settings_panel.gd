@@ -9,6 +9,7 @@ signal closed
 @onready var _music_volume: HSlider = $VBox/MusicVolumeRow/MusicVolume
 @onready var _sfx_volume: HSlider = $VBox/SfxVolumeRow/SfxVolume
 @onready var _close_btn: Button = $VBox/Close
+@onready var _start_fresh_run_btn: Button = $VBox/StartFreshRun
 
 # Volume sliders shape the Master bus in dB. The on/off check buttons remain
 # the source-of-truth for "play music at all" — the slider rides on top of it
@@ -26,6 +27,8 @@ func _ready() -> void:
 	_music_volume.value_changed.connect(_on_music_volume_changed)
 	_sfx_volume.value_changed.connect(_on_sfx_volume_changed)
 	_close_btn.pressed.connect(_on_close_pressed)
+	if _start_fresh_run_btn != null:
+		_start_fresh_run_btn.pressed.connect(_on_start_fresh_run_pressed)
 	# Init slider values from current Master-bus dB if possible.
 	_music_volume.value = _read_volume_linear()
 	_sfx_volume.value = _read_volume_linear()
@@ -61,6 +64,28 @@ func _on_close_pressed() -> void:
 	Haptics.light_tap()
 	visible = false
 	emit_signal("closed")
+
+func _on_start_fresh_run_pressed() -> void:
+	# Same confirmation flow as the main menu, available mid-battle via the
+	# in-battle settings panel. After reset → bounce back to the main menu so
+	# the player isn't dropped into a now-stale chapter map.
+	AudioBus.play_ui_click()
+	Haptics.light_tap()
+	var d := ConfirmationDialog.new()
+	d.dialog_text = "Start a fresh run? This deletes all progress."
+	d.title = "Start Fresh Run"
+	d.ok_button_text = "Start Fresh"
+	d.get_cancel_button().text = "Cancel"
+	# Parent to root so the dialog renders above battle UI even if the panel
+	# itself is nested inside a tiny container.
+	get_tree().root.add_child(d)
+	d.confirmed.connect(func() -> void:
+		GameState.reset_save()
+		d.queue_free()
+		SceneRouter.goto_main_menu()
+	)
+	d.canceled.connect(func() -> void: d.queue_free())
+	d.popup_centered()
 
 func _read_volume_linear() -> float:
 	var idx: int = AudioServer.get_bus_index("Master")
