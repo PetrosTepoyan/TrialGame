@@ -29,6 +29,7 @@ GameState="*res://scripts/autoload/game_state.gd"
 SceneRouter="*res://scripts/autoload/scene_router.gd"
 AudioBus="*res://scripts/autoload/audio.gd"
 SafeArea="*res://scripts/autoload/safe_area.gd"
+DebugOverlay="*res://scripts/debug/debug_overlay.gd"
 
 [display]
 
