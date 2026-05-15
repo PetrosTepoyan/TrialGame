@@ -99,9 +99,45 @@ func _on_turn_changed(is_player_turn: bool) -> void:
 func _on_emblem_added(emblem: Emblem, scale_size: int) -> void:
 	_action_scale.fill_slot(scale_size - 1, emblem)
 
-func _on_round_executing(_emblems: Array) -> void:
+func _on_round_executing(emblems: Array) -> void:
 	_action_scale.play_execute_animation()
 	_turn_label.text = "Resolving..."
+	_maybe_spawn_combo_burst(emblems)
+
+func _maybe_spawn_combo_burst(emblems: Array) -> void:
+	# Combo definition matches CombatController._detect_shield_combo_level for
+	# shield — 3+ same kind/level. We treat any kind that hits 3+ at one level
+	# as combo-worthy and tint the flash to that kind's color.
+	if emblems == null or emblems.size() < 3:
+		return
+	# Count (kind, level) frequencies.
+	var counts: Dictionary = {}
+	for e_v in emblems:
+		var e: Emblem = e_v
+		var key := Vector2i(e.piece_kind, e.level)
+		counts[key] = int(counts.get(key, 0)) + 1
+	var best_key: Vector2i = Vector2i(-1, -1)
+	var best_count: int = 0
+	for k_v in counts.keys():
+		var c: int = int(counts[k_v])
+		if c > best_count:
+			best_count = c
+			best_key = k_v
+	if best_count < 3:
+		return
+	var color: Color = _kind_to_color(best_key.x)
+	var vp_size: Vector2 = get_viewport_rect().size
+	ComboBurst.spawn(vp_size, color, self)
+
+func _kind_to_color(kind: int) -> Color:
+	if _board != null and _board.piece_types.size() > kind and kind >= 0:
+		return _board.piece_types[kind].color
+	match kind:
+		PieceType.Kind.SWORD: return Color(0.95, 0.78, 0.30)
+		PieceType.Kind.SHIELD: return Color(0.40, 0.62, 0.95)
+		PieceType.Kind.STAFF: return Color(0.66, 0.36, 0.85)
+		PieceType.Kind.BOW: return Color(0.40, 0.82, 0.50)
+	return Color.WHITE
 
 func _on_round_finished() -> void:
 	_action_scale.clear_all()
