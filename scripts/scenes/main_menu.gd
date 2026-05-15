@@ -85,13 +85,18 @@ func _fade_in_flavor() -> void:
 	t.tween_property(_flavor, "modulate:a", 1.0, 0.8).set_trans(Tween.TRANS_SINE)
 
 func _on_play_pressed() -> void:
+	AudioBus.play_ui_click()
 	SceneRouter.goto_chapter_map()
 
 func _on_reset_pressed() -> void:
+	AudioBus.play_ui_click()
 	GameState.reset_save()
 
 func _on_quit_pressed() -> void:
+	AudioBus.play_ui_click()
 	get_tree().quit()
 
 func _on_settings_pressed() -> void:
+	AudioBus.play_ui_click()
 	_settings_panel.visible = true
+	AudioBus.play_panel_open()

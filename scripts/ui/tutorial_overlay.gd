@@ -15,8 +15,11 @@ func show_once() -> void:
 		visible = false
 		return
 	visible = true
+	AudioBus.play_panel_open()
 
 func _on_dismiss() -> void:
+	AudioBus.play_ui_click()
+	AudioBus.play_panel_close()
 	GameState.mark_tutorial_seen()
 	visible = false
 	emit_signal("dismissed")

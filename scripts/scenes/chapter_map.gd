@@ -163,12 +163,15 @@ func _theme_texture_path(theme_id: String) -> String:
 	return ""
 
 func _on_level_pressed(ch_idx: int, lvl_idx: int) -> void:
+	AudioBus.play_ui_click()
 	GameState.set_current_pointer(ch_idx, lvl_idx)
 	SceneRouter.goto_battle()
 
 func _on_king_pressed() -> void:
+	AudioBus.play_ui_click()
 	GameState.set_current_pointer(3, 0)
 	SceneRouter.goto_battle()
 
 func _on_back() -> void:
+	AudioBus.play_ui_click()
 	SceneRouter.goto_main_menu()

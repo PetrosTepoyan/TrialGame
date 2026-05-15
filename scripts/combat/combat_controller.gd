@@ -119,6 +119,10 @@ func _execute_round() -> void:
 	emit_signal("turn_changed", false)
 	emit_signal("round_executing", action_scale.duplicate())
 	AudioBus.play_round_execute()
+	AudioBus.duck_music_briefly()
+	var combo_level: int = _detect_round_combo_level(action_scale)
+	if combo_level > 0:
+		AudioBus.play_combo(combo_level)
 	var shield_choice: int = AbilityResolver.SHIELD_CHOICE_ARMOR
 	var shield_combo_level: int = _detect_shield_combo_level(action_scale)
 	if shield_combo_level > 0:
@@ -184,7 +188,7 @@ func _apply_player_round_result(result: Dictionary) -> void:
 	if pierce > 0 or damage > 0:
 		var dealt: int = enemy.take_damage(damage, bypass > 0, pierce)
 		if dealt > 0:
-			AudioBus.play_hit()
+			AudioBus.play_kind_hit(_dominant_damage_kind(action_scale))
 			emit_signal("damage_dealt", false, dealt, -1)
 	for fx_v in result.get("enemy_effects", []):
 		var fx: StatusEffect = fx_v
@@ -241,6 +245,7 @@ func _execute_enemy_round() -> void:
 		return
 	emit_signal("enemy_round_executing", enemy_action_scale.duplicate())
 	AudioBus.play_round_execute()
+	AudioBus.duck_music_briefly()
 	# Enemy never gets the player's stun-or-armor choice; default to armor.
 	var result: Dictionary = AbilityResolver.resolve_round(board.piece_types, enemy_action_scale, AbilityResolver.SHIELD_CHOICE_ARMOR)
 	await _apply_enemy_round_result(result)
@@ -272,7 +277,7 @@ func _apply_enemy_round_result(result: Dictionary) -> void:
 	if pierce > 0 or damage > 0:
 		var dealt: int = player.take_damage(damage, bypass > 0, pierce)
 		if dealt > 0:
-			AudioBus.play_hit()
+			AudioBus.play_kind_hit(_dominant_damage_kind(enemy_action_scale))
 			emit_signal("damage_dealt", true, dealt, -1)
 		enemy.attacked.emit()
 	# Resolver's "enemy_effects" are effects on the target — when the enemy is
@@ -331,3 +336,41 @@ func _on_enemy_died(_a: CombatActor) -> void:
 	if _enemy_tick_timer != null:
 		_enemy_tick_timer.stop()
 	emit_signal("battle_won")
+
+# --- Audio helpers --------------------------------------------------------
+
+# Decide which piece kind's "voice" should colour the hit SFX. Sword wins when
+# present (it's the primary damage dealer), then bow (hp-damage emblems), then
+# staff (combo fireball damage), with shield only as a last resort.
+func _dominant_damage_kind(emblems: Array) -> int:
+	var counts := {
+		PieceType.Kind.SWORD: 0,
+		PieceType.Kind.BOW: 0,
+		PieceType.Kind.STAFF: 0,
+		PieceType.Kind.SHIELD: 0,
+	}
+	for e_v in emblems:
+		var e: Emblem = e_v
+		if counts.has(e.piece_kind):
+			counts[e.piece_kind] += 1
+	for kind in [PieceType.Kind.SWORD, PieceType.Kind.BOW, PieceType.Kind.STAFF, PieceType.Kind.SHIELD]:
+		if counts[kind] > 0:
+			return kind
+	return PieceType.Kind.SWORD
+
+# Any kind with a 3+ same-level streak is a "combo". Return the highest level
+# present so play_combo can size the stinger to it.
+func _detect_round_combo_level(emblems: Array) -> int:
+	var per_kind_level_counts: Dictionary = {}
+	for e_v in emblems:
+		var e: Emblem = e_v
+		var key := "%d.%d" % [e.piece_kind, e.level]
+		per_kind_level_counts[key] = int(per_kind_level_counts.get(key, 0)) + 1
+	var best_level: int = 0
+	for k in per_kind_level_counts.keys():
+		if int(per_kind_level_counts[k]) >= 3:
+			var parts: Array = (k as String).split(".")
+			var lvl: int = int(parts[1])
+			if lvl > best_level:
+				best_level = lvl
+	return best_level
