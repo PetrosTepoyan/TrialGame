@@ -7,35 +7,35 @@ anchor_left = 0.5
 anchor_top = 0.5
 anchor_right = 0.5
 anchor_bottom = 0.5
-offset_left = -240.0
-offset_top = -180.0
-offset_right = 240.0
-offset_bottom = 180.0
+offset_left = -360.0
+offset_top = -300.0
+offset_right = 360.0
+offset_bottom = 300.0
 script = ExtResource("1_sp")
 
 [node name="VBox" type="VBoxContainer" parent="."]
-theme_override_constants/separation = 18
+theme_override_constants/separation = 24
 
 [node name="Title" type="Label" parent="VBox"]
 horizontal_alignment = 1
 text = "Settings"
-theme_override_font_sizes/font_size = 32
+theme_override_font_sizes/font_size = 56
 theme_override_colors/font_color = Color(0.95, 0.82, 0.42, 1)
 
 [node name="Music" type="CheckButton" parent="VBox"]
 button_pressed = true
 text = "Music"
-theme_override_font_sizes/font_size = 22
+theme_override_font_sizes/font_size = 38
 
 [node name="Sfx" type="CheckButton" parent="VBox"]
 button_pressed = true
 text = "Sound effects"
-theme_override_font_sizes/font_size = 22
+theme_override_font_sizes/font_size = 38
 
 [node name="Spacer" type="Control" parent="VBox"]
 custom_minimum_size = Vector2(0, 20)
 
 [node name="Close" type="Button" parent="VBox"]
-custom_minimum_size = Vector2(0, 60)
+custom_minimum_size = Vector2(0, 102)
 text = "Close"
-theme_override_font_sizes/font_size = 24
+theme_override_font_sizes/font_size = 42

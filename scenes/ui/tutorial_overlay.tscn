@@ -17,7 +17,7 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 
 [node name="Panel" type="PanelContainer" parent="Center"]
-custom_minimum_size = Vector2(720, 0)
+custom_minimum_size = Vector2(900, 0)
 
 [node name="VBox" type="VBoxContainer" parent="Center/Panel"]
 theme_override_constants/separation = 16
@@ -31,7 +31,7 @@ theme_override_constants/margin_bottom = 24
 [node name="Title" type="Label" parent="Center/Panel/VBox/Margin"]
 horizontal_alignment = 1
 text = "How to fight"
-theme_override_font_sizes/font_size = 36
+theme_override_font_sizes/font_size = 64
 theme_override_colors/font_color = Color(0.95, 0.82, 0.42, 1)
 
 [node name="Body" type="Label" parent="Center/Panel/VBox"]
@@ -47,13 +47,13 @@ Match-4 = stronger emblem (level 2)
 Match-5 = strongest emblem (level 3)
 
 3+ same-level emblems trigger a combo bonus."
-theme_override_font_sizes/font_size = 20
+theme_override_font_sizes/font_size = 36
 theme_override_colors/font_color = Color(0.85, 0.78, 0.62, 1)
 
 [node name="Spacer" type="Control" parent="Center/Panel/VBox"]
 custom_minimum_size = Vector2(0, 12)
 
 [node name="Continue" type="Button" parent="Center/Panel/VBox"]
-custom_minimum_size = Vector2(0, 70)
+custom_minimum_size = Vector2(0, 120)
 text = "Begin"
-theme_override_font_sizes/font_size = 28
+theme_override_font_sizes/font_size = 50

@@ -33,26 +33,26 @@ color = Color(0.02, 0.01, 0.04, 0.55)
 [node name="TopBar" type="Control" parent="."]
 anchor_right = 1.0
 offset_top = 24.0
-offset_bottom = 220.0
+offset_bottom = 340.0
 
 [node name="Back" type="Button" parent="TopBar"]
 offset_left = 24.0
 offset_top = 10.0
-offset_right = 184.0
-offset_bottom = 66.0
+offset_right = 280.0
+offset_bottom = 110.0
 text = "← Retreat"
-theme_override_font_sizes/font_size = 22
+theme_override_font_sizes/font_size = 38
 theme_override_colors/font_color = Color(0.94, 0.86, 0.66, 1)
 
 [node name="Title" type="Label" parent="TopBar"]
 anchor_right = 1.0
 offset_left = 24.0
-offset_top = 60.0
+offset_top = 120.0
 offset_right = -24.0
-offset_bottom = 132.0
+offset_bottom = 232.0
 horizontal_alignment = 1
 text = "Castle"
-theme_override_font_sizes/font_size = 60
+theme_override_font_sizes/font_size = 96
 theme_override_colors/font_color = Color(0.97, 0.84, 0.42, 1)
 theme_override_colors/font_shadow_color = Color(0, 0, 0, 0.85)
 theme_override_constants/shadow_offset_x = 3
@@ -62,12 +62,12 @@ theme_override_constants/shadow_outline_size = 6
 [node name="Subtitle" type="Label" parent="TopBar"]
 anchor_right = 1.0
 offset_left = 24.0
-offset_top = 140.0
+offset_top = 244.0
 offset_right = -24.0
-offset_bottom = 184.0
+offset_bottom = 306.0
 horizontal_alignment = 1
 text = ""
-theme_override_font_sizes/font_size = 20
+theme_override_font_sizes/font_size = 36
 theme_override_colors/font_color = Color(0.86, 0.78, 0.62, 0.95)
 theme_override_colors/font_shadow_color = Color(0, 0, 0, 0.7)
 theme_override_constants/shadow_offset_x = 1
@@ -75,12 +75,12 @@ theme_override_constants/shadow_offset_y = 1
 
 [node name="Rule" type="Label" parent="TopBar"]
 anchor_right = 1.0
-offset_top = 188.0
+offset_top = 312.0
 offset_right = 0.0
-offset_bottom = 218.0
+offset_bottom = 352.0
 horizontal_alignment = 1
 text = "─────  ⚜  ─────"
-theme_override_font_sizes/font_size = 16
+theme_override_font_sizes/font_size = 28
 theme_override_colors/font_color = Color(0.70, 0.52, 0.22, 0.85)
 
 [node name="Scroll" type="ScrollContainer" parent="."]
@@ -88,8 +88,8 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 offset_left = 32.0
 offset_right = -32.0
-offset_top = 240.0
-offset_bottom = -240.0
+offset_top = 400.0
+offset_bottom = -300.0
 
 [node name="Chapters" type="VBoxContainer" parent="Scroll"]
 size_flags_horizontal = 3
@@ -100,29 +100,29 @@ anchor_left = 0.5
 anchor_right = 0.5
 anchor_top = 1.0
 anchor_bottom = 1.0
-offset_left = -280.0
-offset_right = 280.0
-offset_top = -210.0
-offset_bottom = -40.0
+offset_left = -360.0
+offset_right = 360.0
+offset_top = -280.0
+offset_bottom = -50.0
 
 [node name="KingVBox" type="VBoxContainer" parent="KingPanel"]
-theme_override_constants/separation = 4
+theme_override_constants/separation = 6
 
 [node name="KingLabel" type="Label" parent="KingPanel/KingVBox"]
 horizontal_alignment = 1
 text = "✶  THE THRONE  ✶"
-theme_override_font_sizes/font_size = 16
+theme_override_font_sizes/font_size = 28
 theme_override_colors/font_color = Color(0.78, 0.55, 0.22, 0.95)
 
 [node name="KingButton" type="Button" parent="KingPanel/KingVBox"]
-custom_minimum_size = Vector2(0, 86)
+custom_minimum_size = Vector2(0, 140)
 text = "Fight the King"
-theme_override_font_sizes/font_size = 30
+theme_override_font_sizes/font_size = 52
 theme_override_colors/font_color = Color(1, 0.94, 0.74, 1)
 theme_override_colors/font_disabled_color = Color(0.55, 0.50, 0.42, 0.55)
 
 [node name="KingFlavor" type="Label" parent="KingPanel/KingVBox"]
 horizontal_alignment = 1
 text = ""
-theme_override_font_sizes/font_size = 14
+theme_override_font_sizes/font_size = 24
 theme_override_colors/font_color = Color(0.82, 0.70, 0.50, 0.85)
