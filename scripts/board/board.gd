@@ -2,7 +2,9 @@ class_name Board
 extends Node2D
 
 signal swap_animated
-signal match_resolved(kind: int, count: int, longest_run: int)
+# from_rainbow flags any group that pulled in a rainbow tile — combat treats
+# those as forced L3 matches regardless of axis-run length.
+signal match_resolved(kind: int, count: int, longest_run: int, from_rainbow: bool)
 signal cascade_finished(total_matches: int, cascade_depth: int)
 signal invalid_swap
 signal shuffle_started
@@ -15,6 +17,23 @@ const SPACING: float = 4.0
 const MAX_CASCADE_DEPTH := 20
 const DIAGONAL_MIN_LENGTH := 4  # set to 4 to dial down match frequency
 
+# --- Tunable mechanics ---
+# Probability (0..1) that a freshly-refilled tile is the Rainbow special instead
+# of a normal kind. Rainbows are never placed during startup or shuffle. Keep in
+# sync with PieceType.SPECIAL_RAINBOW_CHANCE; we duplicate the literal because
+# GDScript const initializers can't reference another script's class constants.
+const SPECIAL_RAINBOW_CHANCE: float = 0.02
+
+# Weighted spawn distribution for the four army kinds. Index matches Kind enum
+# (SWORD, SHIELD, STAFF, BOW). Sword is slightly favoured because most players
+# want to deal damage — this keeps combat moving.
+const KIND_SPAWN_WEIGHTS: Array[int] = [28, 24, 24, 24]
+
+# How long the board must sit idle (in seconds) before we pulse a hint move.
+const HINT_IDLE_SECONDS: float = 6.0
+const HINT_PULSE_SCALE: float = 1.18
+const HINT_PULSE_TIME: float = 0.45
+
 enum State { IDLE, SWAPPING, RESOLVING, SHUFFLING }
 
 @export var piece_types: Array[PieceType] = []
@@ -25,6 +44,13 @@ var _input_locked: bool = false               # CombatController locks during ro
 var _selected_cell: Vector2i = Vector2i(-1, -1)
 var _piece_layer: Node2D
 var _rng := RandomNumberGenerator.new()
+
+# Idle-hint state. _hint_timer counts down each frame while the board is idle
+# and unlocked; on fire we look for a valid move and briefly pulse the two
+# pieces involved. Cleared on any input (request_swap, tap_select).
+var _hint_timer: float = HINT_IDLE_SECONDS
+var _hint_pieces: Array[Piece] = []
+var _hint_tweens: Array[Tween] = []
 
 func _ready() -> void:
 	_rng.randomize()
@@ -102,7 +128,11 @@ func _make_blank_kind_grid() -> Array:
 	return kind_grid
 
 func _pick_kind_without_match(kind_grid: Array, x: int, y: int) -> int:
-	var candidates: Array[int] = [0, 1, 2, 3]
+	# Rainbows are never placed at startup or in shuffle; restrict to army kinds.
+	var candidates: Array[int] = [
+		PieceType.Kind.SWORD, PieceType.Kind.SHIELD,
+		PieceType.Kind.STAFF, PieceType.Kind.BOW,
+	]
 	candidates.shuffle()
 	for k in candidates:
 		kind_grid[y][x] = k
@@ -113,7 +143,10 @@ func _pick_kind_without_match(kind_grid: Array, x: int, y: int) -> int:
 
 func _creates_immediate_match(kind_grid: Array, x: int, y: int) -> bool:
 	var k: int = kind_grid[y][x]
-	if k < 0:
+	# Rainbow is wildcard — we never want one placed at startup, but if it's
+	# already there for any reason it's safe to skip (it doesn't *create* a
+	# match by itself, the match logic folds it in adjacent).
+	if k < 0 or k == PieceType.Kind.RAINBOW:
 		return false
 	if x >= 2 and kind_grid[y][x - 1] == k and kind_grid[y][x - 2] == k:
 		return true
@@ -124,6 +157,22 @@ func _creates_immediate_match(kind_grid: Array, x: int, y: int) -> bool:
 	if x >= 2 and y <= ROWS - 3 and kind_grid[y + 1][x - 1] == k and kind_grid[y + 2][x - 2] == k:
 		return true
 	return false
+
+# Weighted random pick across the four army kinds. Sword is favoured per
+# KIND_SPAWN_WEIGHTS. Used by refill.
+func _pick_weighted_kind() -> int:
+	var total: int = 0
+	for w in KIND_SPAWN_WEIGHTS:
+		total += w
+	if total <= 0:
+		return _rng.randi() % PieceType.SPAWNABLE_KIND_COUNT
+	var roll: int = _rng.randi_range(0, total - 1)
+	var acc: int = 0
+	for i in range(KIND_SPAWN_WEIGHTS.size()):
+		acc += KIND_SPAWN_WEIGHTS[i]
+		if roll < acc:
+			return i
+	return KIND_SPAWN_WEIGHTS.size() - 1
 
 func _clear_all_pieces() -> void:
 	if _piece_layer != null:
@@ -138,9 +187,24 @@ func _clear_all_pieces() -> void:
 
 func _make_piece(kind: int, board_pos: Vector2i) -> Piece:
 	var p := Piece.new()
-	p.configure(kind, piece_types[kind].color, board_pos)
+	var tint: Color = _color_for_kind(kind)
+	p.configure(kind, tint, board_pos)
 	p.position = board_pos_to_world(board_pos)
 	return p
+
+func _color_for_kind(kind: int) -> Color:
+	if kind == PieceType.Kind.RAINBOW:
+		# Rainbow ignores per-kind palette; piece._draw paints the swirl itself.
+		return Color(1.0, 1.0, 1.0)
+	if kind >= 0 and kind < piece_types.size():
+		return piece_types[kind].color
+	return Color.WHITE
+
+# Refill pick: occasionally returns RAINBOW; otherwise weighted army kind.
+func _roll_refill_kind() -> int:
+	if _rng.randf() < SPECIAL_RAINBOW_CHANCE:
+		return PieceType.Kind.RAINBOW
+	return _pick_weighted_kind()
 
 func board_pos_to_world(bp: Vector2i) -> Vector2:
 	var step: float = CELL + SPACING
@@ -167,6 +231,8 @@ func set_input_locked(value: bool) -> void:
 
 # Public API: request a swap. Returns true if accepted.
 func request_swap(a: Vector2i, b: Vector2i) -> bool:
+	# Any swap attempt counts as input — kill the idle hint and reset its timer.
+	_reset_hint_timer()
 	if state != State.IDLE or _input_locked:
 		return false
 	if not is_in_bounds(a) or not is_in_bounds(b):
@@ -245,7 +311,8 @@ func _resolve_cascade() -> void:
 			var k: int = g["kind"]
 			var cells: Array = g["cells"]
 			var longest: int = MatchDetector.longest_axis_run_in(cells, kind_grid)
-			emit_signal("match_resolved", k, cells.size(), longest)
+			var from_rainbow: bool = bool(g.get("had_rainbow", false))
+			emit_signal("match_resolved", k, cells.size(), longest, from_rainbow)
 			Haptics.light_tap()
 			for cell_v in cells:
 				var prev: int = int(cell_run.get(cell_v, 0))
@@ -266,7 +333,7 @@ func _resolve_cascade() -> void:
 				pieces_to_free.append(p)
 				grid[cell.y][cell.x] = null
 				var run_len: int = int(cell_run.get(cell, 3))
-				MatchParticles.spawn(p.position, piece_types[p.kind].color, _piece_layer, p.kind, run_len)
+				MatchParticles.spawn(p.position, _color_for_kind(p.kind), _piece_layer, p.kind, run_len)
 		if not remove_tweens.is_empty():
 			await remove_tweens[remove_tweens.size() - 1].finished
 		for p in pieces_to_free:
@@ -291,7 +358,7 @@ func _apply_gravity_and_refill() -> void:
 				write_y -= 1
 		var spawn_index: int = 0
 		for y in range(write_y, -1, -1):
-			var kind: int = _rng.randi() % PieceType.SPAWNABLE_KIND_COUNT
+			var kind: int = _roll_refill_kind()
 			var p := _make_piece(kind, Vector2i(x, y))
 			_piece_layer.add_child(p)
 			grid[y][x] = p
@@ -330,7 +397,7 @@ func shuffle_board_if_dead() -> bool:
 					if p == null:
 						continue
 					var new_kind: int = kind_grid[y][x]
-					p.configure(new_kind, piece_types[new_kind].color, Vector2i(x, y))
+					p.configure(new_kind, _color_for_kind(new_kind), Vector2i(x, y))
 			emit_signal("shuffle_finished")
 			state = State.IDLE
 			return true
@@ -341,6 +408,8 @@ func shuffle_board_if_dead() -> bool:
 # Tap-then-tap UX as alternative to swipe. Tap a piece (it highlights), then
 # tap an orthogonal neighbour to swap.
 func tap_select(bp: Vector2i) -> void:
+	# Any tap counts as input — kill the idle hint and reset its timer.
+	_reset_hint_timer()
 	if state != State.IDLE or _input_locked:
 		return
 	if _selected_cell == Vector2i(-1, -1):
@@ -376,3 +445,57 @@ func get_piece_at(bp: Vector2i) -> Piece:
 	if not is_in_bounds(bp):
 		return null
 	return grid[bp.y][bp.x]
+
+# --- No-moves hint ---
+#
+# When the player sits idle (state == IDLE and input unlocked) for
+# HINT_IDLE_SECONDS, we scan once for any valid swap and pulse the two pieces
+# involved so they catch the eye. The expensive scan only runs when the timer
+# fires — not every frame.
+
+func _process(delta: float) -> void:
+	if state != State.IDLE or _input_locked:
+		# Active board / locked input — don't pulse hints and don't decay the timer.
+		_clear_hint()
+		_hint_timer = HINT_IDLE_SECONDS
+		return
+	# Already showing a hint — keep it visible until input.
+	if not _hint_pieces.is_empty():
+		return
+	if _hint_timer > 0.0:
+		_hint_timer -= delta
+		if _hint_timer <= 0.0:
+			_show_hint()
+
+func _reset_hint_timer() -> void:
+	_hint_timer = HINT_IDLE_SECONDS
+	_clear_hint()
+
+func _show_hint() -> void:
+	var pair: Array = NoMovesDetector.find_any_move(_kind_snapshot(), DIAGONAL_MIN_LENGTH)
+	if pair.size() != 2:
+		# No moves — shuffle will handle this elsewhere.
+		return
+	var a: Vector2i = pair[0]
+	var b: Vector2i = pair[1]
+	var pa: Piece = grid[a.y][a.x]
+	var pb: Piece = grid[b.y][b.x]
+	if pa == null or pb == null:
+		return
+	_hint_pieces = [pa, pb]
+	for p in _hint_pieces:
+		var t := create_tween()
+		t.set_loops()
+		t.tween_property(p, "scale", Vector2(HINT_PULSE_SCALE, HINT_PULSE_SCALE), HINT_PULSE_TIME).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+		t.tween_property(p, "scale", Vector2(1.0, 1.0), HINT_PULSE_TIME).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+		_hint_tweens.append(t)
+
+func _clear_hint() -> void:
+	for t in _hint_tweens:
+		if t != null and t.is_running():
+			t.kill()
+	_hint_tweens.clear()
+	for p in _hint_pieces:
+		if p != null and is_instance_valid(p) and not p.is_selected:
+			p.scale = Vector2.ONE
+	_hint_pieces.clear()

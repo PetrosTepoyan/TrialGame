@@ -6,6 +6,11 @@ signal armor_changed(armor: int)
 signal status_changed(effects: Array)
 signal died(actor: CombatActor)
 signal attacked
+# Emitted once when current_hp drops below LOW_HP_FRACTION of max_hp. Re-emits
+# only if the actor has been healed back above the threshold and re-crossed it.
+signal low_hp(actor: CombatActor)
+
+const LOW_HP_FRACTION: float = 0.25
 
 @export var is_player: bool = true
 @export var display_name: String = "Hero"
@@ -16,11 +21,13 @@ signal attacked
 var current_hp: int = 0
 var armor: int = 0                  # temporary armor stacking on top of inherent_armor
 var active_effects: Array = []      # Array[StatusEffect]
+var _was_low_hp: bool = false       # latch so low_hp fires once per crossing
 
 func _ready() -> void:
 	current_hp = max_hp
 	armor = 0
 	active_effects = []
+	_was_low_hp = false
 
 func setup(p_max_hp: int, p_base_damage: int, p_inherent_armor: int = 0) -> void:
 	max_hp = p_max_hp
@@ -29,6 +36,7 @@ func setup(p_max_hp: int, p_base_damage: int, p_inherent_armor: int = 0) -> void
 	current_hp = max_hp
 	armor = 0
 	active_effects = []
+	_was_low_hp = false
 	emit_signal("hp_changed", current_hp, max_hp)
 	emit_signal("armor_changed", armor + inherent_armor)
 	emit_signal("status_changed", active_effects)
@@ -51,6 +59,7 @@ func take_damage(raw: int, bypass_armor: bool = false, pierce: int = 0) -> int:
 			emit_signal("armor_changed", armor + inherent_armor)
 	current_hp = max(0, current_hp - dmg)
 	emit_signal("hp_changed", current_hp, max_hp)
+	_check_low_hp()
 	if current_hp <= 0:
 		emit_signal("died", self)
 	return dmg
@@ -69,7 +78,21 @@ func heal(amount: int) -> int:
 	var healed: int = min(max_hp - current_hp, amount)
 	current_hp += healed
 	emit_signal("hp_changed", current_hp, max_hp)
+	_check_low_hp()
 	return healed
+
+func _check_low_hp() -> void:
+	# Latched edge-trigger: low_hp emits once when we cross from healthy to low.
+	# Healing back above the threshold rearms it.
+	if max_hp <= 0:
+		return
+	var frac: float = float(current_hp) / float(max_hp)
+	var is_low: bool = current_hp > 0 and frac < LOW_HP_FRACTION
+	if is_low and not _was_low_hp:
+		_was_low_hp = true
+		emit_signal("low_hp", self)
+	elif not is_low and _was_low_hp:
+		_was_low_hp = false
 
 func add_armor(amount: int) -> void:
 	armor += amount
