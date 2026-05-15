@@ -18,7 +18,8 @@ extends Control
 @onready var _pause_button: Button = $TopBar/PauseButton
 @onready var _exit_button: Button = $TopBar/ExitButton
 @onready var _floating_text_root: Node2D = $FloatingTextRoot
-@onready var _action_scale: ActionScale = $ActionScaleBar/ActionScale
+@onready var _action_scale: ActionScale = $ActionScaleBar/PlayerActionScale
+@onready var _enemy_action_scale: ActionScale = $ActionScaleBar/EnemyActionScale
 @onready var _shield_popup: PanelContainer = $ShieldChoicePopup
 @onready var _shield_armor_btn: Button = $ShieldChoicePopup/VBox/Buttons/ArmorBtn
 @onready var _shield_stun_btn: Button = $ShieldChoicePopup/VBox/Buttons/StunBtn
@@ -60,10 +61,12 @@ func _ready() -> void:
 	_combat.emblem_added.connect(_on_emblem_added)
 	_combat.round_executing.connect(_on_round_executing)
 	_combat.round_finished.connect(_on_round_finished)
+	_combat.enemy_emblem_added.connect(_on_enemy_emblem_added)
+	_combat.enemy_round_executing.connect(_on_enemy_round_executing)
+	_combat.enemy_round_finished.connect(_on_enemy_round_finished)
 	_combat.shield_choice_required.connect(_on_shield_choice_required)
 	_combat.battle_won.connect(_on_battle_won)
 	_combat.battle_lost.connect(_on_battle_lost)
-	_combat.enemy_special_attack.connect(_on_enemy_special_attack)
 	_combat.enemy_stunned_skipped.connect(_on_enemy_stunned)
 	_combat.round_finished.connect(_on_round_finished_count)
 	_pause_button.pressed.connect(_on_pause)
@@ -86,14 +89,12 @@ func _layout_board() -> void:
 	_board.position = Vector2((area_size.x - board_size.x) * 0.5, (area_size.y - board_size.y) * 0.5)
 
 func _on_turn_changed(is_player_turn: bool) -> void:
+	# Both actors stay active in real-time combat — the label just flips when
+	# the hero's scale is being resolved so the player knows input is paused.
 	if is_player_turn:
-		_turn_label.text = "Your turn — collect 5 emblems"
-		_player_battle_actor.modulate = Color(1, 1, 1, 1)
-		_enemy_battle_actor.modulate = Color(0.7, 0.7, 0.8, 1)
+		_turn_label.text = "Collect 5 emblems"
 	else:
-		_turn_label.text = "%s acts" % _combat.level.enemy_name
-		_player_battle_actor.modulate = Color(0.7, 0.7, 0.8, 1)
-		_enemy_battle_actor.modulate = Color(1, 1, 1, 1)
+		_turn_label.text = "Resolving..."
 
 func _on_emblem_added(emblem: Emblem, scale_size: int) -> void:
 	_action_scale.fill_slot(scale_size - 1, emblem)
@@ -107,6 +108,15 @@ func _on_round_finished() -> void:
 	# Repopulate any overflow emblems that carried into the new round.
 	for i in range(_combat.action_scale.size()):
 		_action_scale.fill_slot(i, _combat.action_scale[i])
+
+func _on_enemy_emblem_added(emblem: Emblem, scale_size: int) -> void:
+	_enemy_action_scale.fill_slot(scale_size - 1, emblem)
+
+func _on_enemy_round_executing(_emblems: Array) -> void:
+	_enemy_action_scale.play_execute_animation()
+
+func _on_enemy_round_finished() -> void:
+	_enemy_action_scale.clear_all()
 
 func _on_damage_dealt(target_is_player: bool, amount: int, _source_kind: int) -> void:
 	var attacker_battle: BattleActor = _enemy_battle_actor if target_is_player else _player_battle_actor
@@ -163,10 +173,6 @@ func _on_battle_lost() -> void:
 	_player_battle_actor.die()
 	await get_tree().create_timer(0.7).timeout
 	SceneRouter.goto_game_over()
-
-func _on_enemy_special_attack() -> void:
-	_spawn_float_text(_enemy_battle_actor.global_position + Vector2(0, -120), "SPECIAL!", Color(1, 0.7, 0.2), 99)
-	_screen_shake(0.5, 0.35)
 
 func _on_enemy_stunned() -> void:
 	_spawn_float_text(_enemy_battle_actor.global_position + Vector2(0, -120), "STUNNED!", Color(1, 0.92, 0.30), 99)
