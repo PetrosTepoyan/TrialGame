@@ -1,41 +1,96 @@
-[gd_scene load_steps=2 format=3]
+[gd_scene load_steps=3 format=3]
 
 [ext_resource type="Script" path="res://scripts/ui/settings_panel.gd" id="1_sp"]
+[ext_resource type="Theme" path="res://assets/theme/three_towers.tres" id="2_theme"]
 
 [node name="SettingsPanel" type="PanelContainer"]
 anchor_left = 0.5
 anchor_top = 0.5
 anchor_right = 0.5
 anchor_bottom = 0.5
-offset_left = -360.0
-offset_top = -300.0
-offset_right = 360.0
-offset_bottom = 300.0
+offset_left = -400.0
+offset_top = -380.0
+offset_right = 400.0
+offset_bottom = 380.0
+theme = ExtResource("2_theme")
 script = ExtResource("1_sp")
 
 [node name="VBox" type="VBoxContainer" parent="."]
-theme_override_constants/separation = 24
+theme_override_constants/separation = 18
 
 [node name="Title" type="Label" parent="VBox"]
 horizontal_alignment = 1
-text = "Settings"
+text = "✶  Settings  ✶"
 theme_override_font_sizes/font_size = 56
-theme_override_colors/font_color = Color(0.95, 0.82, 0.42, 1)
+theme_override_colors/font_color = Color(0.95, 0.78, 0.30, 1)
+theme_override_colors/font_outline_color = Color(0.02, 0.0, 0.04, 1)
+theme_override_constants/outline_size = 6
+
+[node name="Rule" type="Label" parent="VBox"]
+horizontal_alignment = 1
+text = "─────  ⚜  ─────"
+theme_override_font_sizes/font_size = 24
+theme_override_colors/font_color = Color(0.70, 0.52, 0.22, 0.85)
+
+[node name="AudioSection" type="Label" parent="VBox"]
+text = "AUDIO"
+theme_override_font_sizes/font_size = 28
+theme_override_colors/font_color = Color(0.95, 0.78, 0.30, 1)
 
 [node name="Music" type="CheckButton" parent="VBox"]
 button_pressed = true
 text = "Music"
-theme_override_font_sizes/font_size = 38
+theme_override_font_sizes/font_size = 36
+
+[node name="MusicVolumeRow" type="HBoxContainer" parent="VBox"]
+theme_override_constants/separation = 12
+
+[node name="MusicVolumeLabel" type="Label" parent="VBox/MusicVolumeRow"]
+custom_minimum_size = Vector2(220, 0)
+text = "Music volume"
+theme_override_font_sizes/font_size = 28
+
+[node name="MusicVolume" type="HSlider" parent="VBox/MusicVolumeRow"]
+custom_minimum_size = Vector2(0, 48)
+size_flags_horizontal = 3
+min_value = 0.0
+max_value = 1.0
+step = 0.05
+value = 0.8
 
 [node name="Sfx" type="CheckButton" parent="VBox"]
 button_pressed = true
 text = "Sound effects"
-theme_override_font_sizes/font_size = 38
+theme_override_font_sizes/font_size = 36
+
+[node name="SfxVolumeRow" type="HBoxContainer" parent="VBox"]
+theme_override_constants/separation = 12
+
+[node name="SfxVolumeLabel" type="Label" parent="VBox/SfxVolumeRow"]
+custom_minimum_size = Vector2(220, 0)
+text = "SFX volume"
+theme_override_font_sizes/font_size = 28
+
+[node name="SfxVolume" type="HSlider" parent="VBox/SfxVolumeRow"]
+custom_minimum_size = Vector2(0, 48)
+size_flags_horizontal = 3
+min_value = 0.0
+max_value = 1.0
+step = 0.05
+value = 1.0
+
+[node name="HapticsSection" type="Label" parent="VBox"]
+text = "HAPTICS"
+theme_override_font_sizes/font_size = 28
+theme_override_colors/font_color = Color(0.95, 0.78, 0.30, 1)
+
+[node name="HapticsSlot" type="Control" parent="VBox"]
+custom_minimum_size = Vector2(0, 56)
 
 [node name="Spacer" type="Control" parent="VBox"]
-custom_minimum_size = Vector2(0, 20)
+custom_minimum_size = Vector2(0, 16)
 
 [node name="Close" type="Button" parent="VBox"]
-custom_minimum_size = Vector2(0, 102)
+custom_minimum_size = Vector2(0, 108)
 text = "Close"
 theme_override_font_sizes/font_size = 42

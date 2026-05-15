@@ -6,7 +6,9 @@ extends Control
 @export var flip_fill_direction: bool = false
 @export var actor_name: String = "Hero"
 
-@onready var _bg: ColorRect = $Bg
+# Bg is a Panel (was ColorRect) so we can pin an ornate gold-rim StyleBoxFlat
+# on it. Fill stays a ColorRect — its color is the hero/enemy bar tint.
+@onready var _bg: Control = $Bg
 @onready var _fill: ColorRect = $Bg/Fill
 @onready var _label: Label = $Bg/Label
 @onready var _armor_label: Label = $ArmorLabel
@@ -14,6 +16,7 @@ extends Control
 var _actor: CombatActor
 var _last_hp: int = 0
 var _max_hp: int = 1
+var _fill_tween: Tween = null
 
 func _ready() -> void:
 	if actor_path != NodePath():
@@ -36,8 +39,13 @@ func _on_hp_changed(current_hp: int, max_hp: int) -> void:
 	_last_hp = current_hp
 	_max_hp = max_hp
 	var pct: float = float(current_hp) / float(max(1, max_hp))
-	var tween := create_tween()
-	tween.tween_property(self, "_fill_pct", pct, 0.25).set_trans(Tween.TRANS_QUAD)
+	# Kill any in-flight fill tween so rapid hits don't fight; ease-out feels
+	# more like blood draining than a hard linear pop.
+	if _fill_tween != null and _fill_tween.is_valid():
+		_fill_tween.kill()
+	_fill_tween = create_tween()
+	_fill_tween.tween_property(self, "_fill_pct", pct, 0.35)\
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 	_update_label()
 
 func _on_armor_changed(armor_total: int) -> void:
