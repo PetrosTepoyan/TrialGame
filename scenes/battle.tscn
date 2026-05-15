@@ -15,6 +15,7 @@
 [node name="Battle" type="Control"]
 anchor_right = 1.0
 anchor_bottom = 1.0
+mouse_filter = 2
 script = ExtResource("1_battle")
 
 [node name="Background" type="ColorRect" parent="."]
@@ -35,52 +36,52 @@ modulate = Color(1, 1, 1, 0.85)
 [node name="TopBar" type="Control" parent="."]
 anchor_right = 1.0
 offset_top = 40.0
-offset_bottom = 280.0
+offset_bottom = 360.0
 mouse_filter = 2
 
 [node name="LevelLabel" type="Label" parent="TopBar"]
 offset_left = 24.0
 offset_top = 0.0
 offset_right = 700.0
-offset_bottom = 50.0
+offset_bottom = 70.0
 text = "Level"
-theme_override_font_sizes/font_size = 28
+theme_override_font_sizes/font_size = 50
 theme_override_colors/font_color = Color(0.95, 0.82, 0.42, 1)
 
 [node name="TurnLabel" type="Label" parent="TopBar"]
 offset_left = 24.0
-offset_top = 50.0
+offset_top = 76.0
 offset_right = 700.0
-offset_bottom = 90.0
+offset_bottom = 132.0
 text = "Your turn — collect 5 emblems"
-theme_override_font_sizes/font_size = 22
+theme_override_font_sizes/font_size = 38
 theme_override_colors/font_color = Color(0.85, 0.78, 0.62, 1)
 
 [node name="PauseButton" type="Button" parent="TopBar"]
 anchor_left = 1.0
 anchor_right = 1.0
-offset_left = -180.0
+offset_left = -260.0
 offset_right = -24.0
 offset_top = 10.0
-offset_bottom = 70.0
+offset_bottom = 110.0
 text = "Settings"
-theme_override_font_sizes/font_size = 22
+theme_override_font_sizes/font_size = 38
 
 [node name="ExitButton" type="Button" parent="TopBar"]
 anchor_left = 1.0
 anchor_right = 1.0
-offset_left = -340.0
-offset_right = -190.0
+offset_left = -440.0
+offset_right = -270.0
 offset_top = 10.0
-offset_bottom = 70.0
+offset_bottom = 110.0
 text = "Exit"
-theme_override_font_sizes/font_size = 22
+theme_override_font_sizes/font_size = 38
 
 [node name="PlayerHp" type="Control" parent="TopBar"]
 offset_left = 24.0
-offset_top = 100.0
+offset_top = 150.0
 offset_right = 484.0
-offset_bottom = 178.0
+offset_bottom = 240.0
 script = ExtResource("6_hpbar")
 bar_color = Color(0.32, 0.78, 0.42, 1)
 actor_name = "Hero"
@@ -101,7 +102,7 @@ anchor_bottom = 1.0
 horizontal_alignment = 1
 vertical_alignment = 1
 text = "Hero — 100/100"
-theme_override_font_sizes/font_size = 22
+theme_override_font_sizes/font_size = 38
 theme_override_colors/font_color = Color(1, 1, 1, 1)
 theme_override_colors/font_outline_color = Color(0, 0, 0, 0.8)
 theme_override_constants/outline_size = 4
@@ -110,18 +111,18 @@ theme_override_constants/outline_size = 4
 anchor_left = 0.0
 anchor_top = 1.0
 anchor_bottom = 1.0
-offset_top = 4.0
-offset_right = 200.0
-offset_bottom = 32.0
+offset_top = 6.0
+offset_right = 240.0
+offset_bottom = 50.0
 text = ""
-theme_override_font_sizes/font_size = 18
+theme_override_font_sizes/font_size = 32
 theme_override_colors/font_color = Color(0.7, 0.85, 1, 1)
 
 [node name="PlayerStatus" type="HBoxContainer" parent="TopBar"]
 offset_left = 24.0
-offset_top = 184.0
+offset_top = 256.0
 offset_right = 484.0
-offset_bottom = 220.0
+offset_bottom = 314.0
 script = ExtResource("9_status")
 theme_override_constants/separation = 8
 
@@ -129,9 +130,9 @@ theme_override_constants/separation = 8
 anchor_left = 1.0
 anchor_right = 1.0
 offset_left = -484.0
-offset_top = 100.0
+offset_top = 150.0
 offset_right = -24.0
-offset_bottom = 178.0
+offset_bottom = 240.0
 script = ExtResource("6_hpbar")
 bar_color = Color(0.85, 0.20, 0.20, 1)
 flip_fill_direction = true
@@ -153,7 +154,7 @@ anchor_bottom = 1.0
 horizontal_alignment = 1
 vertical_alignment = 1
 text = "Enemy — 100/100"
-theme_override_font_sizes/font_size = 22
+theme_override_font_sizes/font_size = 38
 theme_override_colors/font_color = Color(1, 1, 1, 1)
 theme_override_colors/font_outline_color = Color(0, 0, 0, 0.8)
 theme_override_constants/outline_size = 4
@@ -163,21 +164,21 @@ anchor_left = 1.0
 anchor_top = 1.0
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_left = -200.0
-offset_top = 4.0
-offset_bottom = 32.0
+offset_left = -240.0
+offset_top = 6.0
+offset_bottom = 50.0
 text = ""
 horizontal_alignment = 2
-theme_override_font_sizes/font_size = 18
+theme_override_font_sizes/font_size = 32
 theme_override_colors/font_color = Color(0.7, 0.85, 1, 1)
 
 [node name="EnemyStatus" type="HBoxContainer" parent="TopBar"]
 anchor_left = 1.0
 anchor_right = 1.0
 offset_left = -484.0
-offset_top = 184.0
+offset_top = 256.0
 offset_right = -24.0
-offset_bottom = 220.0
+offset_bottom = 314.0
 alignment = 2
 script = ExtResource("9_status")
 align_right = true
@@ -185,32 +186,32 @@ theme_override_constants/separation = 8
 
 [node name="ActionScaleBar" type="Control" parent="."]
 anchor_right = 1.0
-offset_top = 290.0
-offset_bottom = 380.0
+offset_top = 420.0
+offset_bottom = 530.0
 mouse_filter = 2
 
 [node name="ActionScaleLabel" type="Label" parent="ActionScaleBar"]
 offset_left = 24.0
 offset_top = 0.0
 offset_right = 600.0
-offset_bottom = 24.0
+offset_bottom = 40.0
 text = "Action scale"
-theme_override_font_sizes/font_size = 18
+theme_override_font_sizes/font_size = 32
 theme_override_colors/font_color = Color(0.85, 0.78, 0.62, 1)
 
 [node name="ActionScale" type="HBoxContainer" parent="ActionScaleBar"]
 anchor_left = 0.5
 anchor_right = 0.5
 offset_left = -180.0
-offset_top = 22.0
+offset_top = 44.0
 offset_right = 180.0
-offset_bottom = 86.0
+offset_bottom = 108.0
 alignment = 1
 script = ExtResource("8_scale")
 theme_override_constants/separation = 8
 
 [node name="BattleScene" type="Node2D" parent="."]
-position = Vector2(540, 580)
+position = Vector2(540, 660)
 
 [node name="Floor" type="ColorRect" parent="BattleScene"]
 offset_left = -300.0
@@ -276,10 +277,10 @@ anchor_left = 0.5
 anchor_top = 0.5
 anchor_right = 0.5
 anchor_bottom = 0.5
-offset_left = -260.0
-offset_top = -120.0
-offset_right = 260.0
-offset_bottom = 120.0
+offset_left = -360.0
+offset_top = -200.0
+offset_right = 360.0
+offset_bottom = 200.0
 
 [node name="VBox" type="VBoxContainer" parent="ShieldChoicePopup"]
 theme_override_constants/separation = 16
@@ -293,27 +294,27 @@ theme_override_constants/margin_bottom = 24
 [node name="Title" type="Label" parent="ShieldChoicePopup/VBox/Margin"]
 horizontal_alignment = 1
 text = "Shield Combo!"
-theme_override_font_sizes/font_size = 28
+theme_override_font_sizes/font_size = 50
 theme_override_colors/font_color = Color(0.95, 0.82, 0.42, 1)
 
 [node name="Subtitle" type="Label" parent="ShieldChoicePopup/VBox"]
 horizontal_alignment = 1
 text = "Choose how to spend it"
-theme_override_font_sizes/font_size = 18
+theme_override_font_sizes/font_size = 32
 
 [node name="Buttons" type="HBoxContainer" parent="ShieldChoicePopup/VBox"]
 theme_override_constants/separation = 16
 alignment = 1
 
 [node name="ArmorBtn" type="Button" parent="ShieldChoicePopup/VBox/Buttons"]
-custom_minimum_size = Vector2(180, 70)
+custom_minimum_size = Vector2(280, 118)
 text = "+Armor (boost)"
-theme_override_font_sizes/font_size = 22
+theme_override_font_sizes/font_size = 38
 
 [node name="StunBtn" type="Button" parent="ShieldChoicePopup/VBox/Buttons"]
-custom_minimum_size = Vector2(180, 70)
+custom_minimum_size = Vector2(280, 118)
 text = "Stun the enemy"
-theme_override_font_sizes/font_size = 22
+theme_override_font_sizes/font_size = 38
 
 [node name="FloatingTextRoot" type="Node2D" parent="."]
 
