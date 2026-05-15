@@ -126,6 +126,10 @@ func _on_damage_dealt(target_is_player: bool, amount: int, _source_kind: int) ->
 	target_battle.hurt()
 	_spawn_float_text(target_battle.global_position + Vector2(0, -90), "-%d" % amount, Color(1, 0.4, 0.4), amount)
 	_screen_shake(min(0.6, amount * 0.04), 0.30)
+	if target_is_player:
+		Haptics.heavy_tap()
+	else:
+		Haptics.medium_tap()
 
 func _on_heal_done(_target_is_player: bool, amount: int) -> void:
 	_spawn_float_text(_player_battle_actor.global_position + Vector2(0, -80), "+%d" % amount, Color(0.5, 1, 0.5), amount)
@@ -151,18 +155,21 @@ func _on_shield_choice_required(combo_level: int) -> void:
 
 func _on_shield_armor_chosen() -> void:
 	AudioBus.play_ui_click()
+	Haptics.medium_tap()
 	_shield_popup.visible = false
 	AudioBus.play_panel_close()
 	_combat.provide_shield_choice(AbilityResolver.SHIELD_CHOICE_ARMOR)
 
 func _on_shield_stun_chosen() -> void:
 	AudioBus.play_ui_click()
+	Haptics.medium_tap()
 	_shield_popup.visible = false
 	AudioBus.play_panel_close()
 	_combat.provide_shield_choice(AbilityResolver.SHIELD_CHOICE_STUN)
 
 func _on_battle_won() -> void:
 	AudioBus.play_victory_sting()
+	Haptics.success()
 	await get_tree().create_timer(0.6).timeout
 	_enemy_battle_actor.die()
 	await get_tree().create_timer(0.7).timeout
@@ -177,6 +184,7 @@ func _on_battle_won() -> void:
 
 func _on_battle_lost() -> void:
 	AudioBus.play_defeat_sting()
+	Haptics.failure()
 	await get_tree().create_timer(0.6).timeout
 	_player_battle_actor.die()
 	await get_tree().create_timer(0.7).timeout
@@ -187,6 +195,7 @@ func _on_enemy_stunned() -> void:
 
 func _on_pause() -> void:
 	AudioBus.play_ui_click()
+	Haptics.light_tap()
 	_settings_panel.visible = not _settings_panel.visible
 	if _settings_panel.visible:
 		AudioBus.play_panel_open()
@@ -195,6 +204,7 @@ func _on_pause() -> void:
 
 func _on_exit_pressed() -> void:
 	AudioBus.play_ui_click()
+	Haptics.light_tap()
 	SceneRouter.goto_chapter_map()
 
 func _on_round_finished_count() -> void:

@@ -11,8 +11,10 @@ func _ready() -> void:
 
 func _on_retry_pressed() -> void:
 	AudioBus.play_ui_click()
+	Haptics.medium_tap()
 	SceneRouter.goto_battle()
 
 func _on_back_pressed() -> void:
 	AudioBus.play_ui_click()
+	Haptics.light_tap()
 	SceneRouter.goto_chapter_map()

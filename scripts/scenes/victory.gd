@@ -13,4 +13,5 @@ func _ready() -> void:
 
 func _on_continue_pressed() -> void:
 	AudioBus.play_ui_click()
+	Haptics.light_tap()
 	SceneRouter.goto_chapter_map()

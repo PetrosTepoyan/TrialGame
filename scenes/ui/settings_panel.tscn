@@ -32,6 +32,11 @@ button_pressed = true
 text = "Sound effects"
 theme_override_font_sizes/font_size = 38
 
+[node name="Haptics" type="CheckButton" parent="VBox"]
+button_pressed = true
+text = "Haptics"
+theme_override_font_sizes/font_size = 38
+
 [node name="Spacer" type="Control" parent="VBox"]
 custom_minimum_size = Vector2(0, 20)
 

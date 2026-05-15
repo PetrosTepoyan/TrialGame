@@ -86,17 +86,21 @@ func _fade_in_flavor() -> void:
 
 func _on_play_pressed() -> void:
 	AudioBus.play_ui_click()
+	Haptics.light_tap()
 	SceneRouter.goto_chapter_map()
 
 func _on_reset_pressed() -> void:
 	AudioBus.play_ui_click()
+	Haptics.light_tap()
 	GameState.reset_save()
 
 func _on_quit_pressed() -> void:
 	AudioBus.play_ui_click()
+	Haptics.light_tap()
 	get_tree().quit()
 
 func _on_settings_pressed() -> void:
 	AudioBus.play_ui_click()
+	Haptics.light_tap()
 	_settings_panel.visible = true
 	AudioBus.play_panel_open()

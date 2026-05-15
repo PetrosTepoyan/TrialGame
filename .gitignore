@@ -2,6 +2,9 @@
 .godot/
 .import/
 
+# Claude Code agent worktrees and runtime
+.claude/
+
 # Godot-specific ignores
 godot_log_*.txt
 *.translation

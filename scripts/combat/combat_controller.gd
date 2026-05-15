@@ -120,9 +120,12 @@ func _execute_round() -> void:
 	emit_signal("round_executing", action_scale.duplicate())
 	AudioBus.play_round_execute()
 	AudioBus.duck_music_briefly()
+	Haptics.heavy_tap()
 	var combo_level: int = _detect_round_combo_level(action_scale)
 	if combo_level > 0:
 		AudioBus.play_combo(combo_level)
+	if _has_combo(action_scale):
+		Haptics.pulse(2, 40, 60)
 	var shield_choice: int = AbilityResolver.SHIELD_CHOICE_ARMOR
 	var shield_combo_level: int = _detect_shield_combo_level(action_scale)
 	if shield_combo_level > 0:
@@ -149,6 +152,18 @@ func _execute_round() -> void:
 	emit_signal("round_finished")
 	_player_round_in_flight = false
 	_recheck_player_input()
+
+func _has_combo(emblems: Array) -> bool:
+	# Any (kind, level) pair appearing 3+ times in the scale counts as a combo.
+	# Used to fire an extra haptic pulse when the round visibly chains.
+	var counts: Dictionary = {}
+	for e_v in emblems:
+		var e: Emblem = e_v
+		var key: String = "%d:%d" % [e.piece_kind, e.level]
+		counts[key] = int(counts.get(key, 0)) + 1
+		if counts[key] >= 3:
+			return true
+	return false
 
 func _detect_shield_combo_level(emblems: Array) -> int:
 	var counts := {1: 0, 2: 0, 3: 0}
