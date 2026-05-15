@@ -6,7 +6,7 @@
 script = ExtResource("1_sa")
 id = "shadow_strike"
 level = 3
-base_damage = 55
+base_damage = 42
 status_on_hit = null
 bypass_armor = false
 animation_id = "shadow_strike"

@@ -6,7 +6,7 @@
 script = ExtResource("1_sa")
 id = "spinning_strike"
 level = 2
-base_damage = 45
+base_damage = 30
 status_on_hit = null
 bypass_armor = true
 animation_id = "spinning_strike"

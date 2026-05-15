@@ -97,6 +97,13 @@ func _ready() -> void:
 	_combat.mana_changed.connect(_on_mana_changed)
 	_combat.spec_attack_fired.connect(_on_spec_attack_fired)
 	_combat.auto_attack_fired.connect(_on_auto_attack_fired)
+	_combat.item_broken.connect(_on_item_broken)
+	# Phase G/H: surface encounter-behavior telegraph banners as floating labels
+	# above the enemy. enemy_replaced fires when CP1 garrison swaps in the next
+	# guard; we use it to refresh the HP bar binding so the new full HP shows.
+	_combat.encounter_telegraph.connect(_on_encounter_telegraph)
+	_combat.enemy_replaced.connect(_on_enemy_replaced)
+	_install_encounter_behavior(level)
 	# Almost-dead: when the player drops below 25% HP, pulse the HP bar red.
 	_player_actor.low_hp.connect(_on_player_low_hp)
 	_pause_button.pressed.connect(_on_pause)
@@ -250,6 +257,65 @@ func _on_auto_attack_fired(is_player: bool, _damage: int) -> void:
 		_player_battle_actor.attack()
 	else:
 		_enemy_battle_actor.attack()
+
+# Phase D: item triggered on the board. Show a brief floating label above the
+# actor the effect targets so the player connects the cause and consequence.
+func _on_item_broken(item: Resource, _location: Vector2i) -> void:
+	var board_item: BoardItem = item as BoardItem
+	if board_item == null:
+		return
+	var targets_player: bool = board_item.target == BoardItem.Target.PLAYER
+	var anchor: BattleActor = _player_battle_actor if targets_player else _enemy_battle_actor
+	var text: String = "%s triggered!" % board_item.display_name
+	var color: Color = board_item.tint
+	_spawn_status_ribbon(anchor, text, color)
+	Haptics.medium_tap()
+
+# --- Encounter behavior wiring (Phase G/H) ------------------------------
+
+# Instantiate the encounter-specific behavior (CP1..CP5) based on the
+# level's EncounterModifier.encounter_id. No modifier → no behavior; regular
+# levels keep the generic combat loop.
+func _install_encounter_behavior(level: LevelResource) -> void:
+	if level == null or level.encounter_modifier == null:
+		return
+	var id: String = level.encounter_modifier.encounter_id
+	if id == "":
+		return
+	var beh: EncounterBehavior = _instantiate_encounter_behavior(id)
+	if beh == null:
+		return
+	beh.setup(_combat, level)
+	_combat.add_child(beh)
+	_combat.register_encounter_behavior(beh)
+	beh.start()
+
+func _instantiate_encounter_behavior(id: String) -> EncounterBehavior:
+	match id:
+		"cp1_garrison":
+			return (load("res://scripts/combat/encounter_behaviors/cp1_garrison.gd") as Script).new()
+		"cp2_archers":
+			return (load("res://scripts/combat/encounter_behaviors/cp2_archers.gd") as Script).new()
+		"cp3_catacombs":
+			return (load("res://scripts/combat/encounter_behaviors/cp3_catacombs.gd") as Script).new()
+		"cp4_pier":
+			return (load("res://scripts/combat/encounter_behaviors/cp4_pier.gd") as Script).new()
+		"cp5_supply_warden":
+			return (load("res://scripts/combat/encounter_behaviors/cp5_supply_warden.gd") as Script).new()
+	return null
+
+# A behavior asked us to show a banner — reuse the status-ribbon path so
+# the visual matches the rest of the battle's floating-text language.
+func _on_encounter_telegraph(text: String, _seconds: float) -> void:
+	_spawn_status_ribbon(_enemy_battle_actor, text, Color(1.0, 0.85, 0.40))
+
+# CP1 garrison: enemy died but the encounter rolled in a fresh one. The
+# behavior already wrote the new HP value into the actor and re-emitted
+# hp_changed, so the bound HP/status views refresh themselves; we just sell
+# the swap with a quick hurt flash.
+func _on_enemy_replaced(_remaining_count: int) -> void:
+	if _enemy_battle_actor != null:
+		_enemy_battle_actor.hurt()
 
 # --- Damage / heal / status (unchanged shape from old controller) -------
 

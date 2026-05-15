@@ -269,6 +269,9 @@ func request_swap(a: Vector2i, b: Vector2i) -> bool:
 	var diff: Vector2i = b - a
 	if abs(diff.x) + abs(diff.y) != 1:
 		return false
+	# Phase D: items are anchored; never swap into or out of an item cell.
+	if grid[a.y][a.x] is ItemPiece or grid[b.y][b.x] is ItemPiece:
+		return false
 	state = State.SWAPPING
 	AudioBus.play_swap()
 	Haptics.medium_tap()
@@ -374,37 +377,148 @@ func _resolve_cascade() -> void:
 			await remove_tweens[remove_tweens.size() - 1].finished
 		for p in pieces_to_free:
 			p.queue_free()
+		# Phase D: notify item pieces of which cells were just cleared so each
+		# adjacent ItemPiece can decrement integrity. We do this BEFORE refill so
+		# items that break can be replaced by the gravity/refill pass.
+		var cleared_array: Array = all_removed.keys()
+		emit_signal("match_cleared_cells", cleared_array)
+		_tick_items_for_cleared(cleared_array)
 		await _apply_gravity_and_refill()
 		depth += 1
 	state = State.IDLE
 	emit_signal("cascade_finished", total, depth)
 
 func _apply_gravity_and_refill() -> void:
+	# Items are unmovable: they act as anchors during gravity. Within a column we
+	# collapse pieces *between* item anchors so falling tiles stack on top of an
+	# item instead of dropping through it. Refilled tiles spawn only into the
+	# top-most empty region (above the highest item or row 0 if no item).
 	var tweens: Array[Tween] = []
 	for x in range(COLS):
-		var write_y: int = ROWS - 1
-		for y in range(ROWS - 1, -1, -1):
-			var p: Piece = grid[y][x]
-			if p != null:
-				if y != write_y:
-					grid[write_y][x] = p
-					grid[y][x] = null
-					p.board_pos = Vector2i(x, write_y)
-					tweens.append(p.tween_to(board_pos_to_world(p.board_pos), 0.22))
-				write_y -= 1
-		var spawn_index: int = 0
-		for y in range(write_y, -1, -1):
-			var kind: int = _roll_refill_kind()
-			var p := _make_piece(kind, Vector2i(x, y))
-			_piece_layer.add_child(p)
-			grid[y][x] = p
-			var step: float = CELL + SPACING
-			p.position = Vector2(p.position.x, -step * (spawn_index + 1) - step * 0.5)
-			tweens.append(p.tween_to(board_pos_to_world(Vector2i(x, y)), 0.25))
-			spawn_index += 1
+		# Find item anchor rows in this column (sorted ascending y).
+		var anchors: Array[int] = []
+		for y in range(ROWS):
+			if grid[y][x] is ItemPiece:
+				anchors.append(y)
+		# Walk segments from bottom to top, anchored by items.
+		var segments: Array = []  # array of [top_y_inclusive, bottom_y_inclusive]
+		var cursor: int = ROWS - 1
+		for i in range(anchors.size() - 1, -1, -1):
+			var a: int = anchors[i]
+			if a < cursor:
+				segments.append([a + 1, cursor])
+			cursor = a - 1
+		# Top-most segment (above the highest anchor — this is also where refill spawns).
+		if cursor >= 0:
+			segments.append([0, cursor])
+		else:
+			# No empty cells above the top-most anchor — still keep an empty top
+			# segment so refill never spawns through an item.
+			segments.append([0, -1])
+		var top_segment_index: int = segments.size() - 1
+		for seg_i in range(segments.size()):
+			var seg: Array = segments[seg_i]
+			var top_y: int = seg[0]
+			var bot_y: int = seg[1]
+			if bot_y < top_y:
+				continue
+			# Collapse non-null pieces within this segment downward.
+			var write_y: int = bot_y
+			for y in range(bot_y, top_y - 1, -1):
+				var p: Piece = grid[y][x]
+				if p != null:
+					if y != write_y:
+						grid[write_y][x] = p
+						grid[y][x] = null
+						p.board_pos = Vector2i(x, write_y)
+						tweens.append(p.tween_to(board_pos_to_world(p.board_pos), 0.22))
+					write_y -= 1
+			# Refill: only the top segment receives new tiles dropping in from above.
+			if seg_i == top_segment_index:
+				var spawn_index: int = 0
+				for y in range(write_y, top_y - 1, -1):
+					var spawned: Piece = _spawn_refill_piece(Vector2i(x, y))
+					grid[y][x] = spawned
+					var step: float = CELL + SPACING
+					spawned.position = Vector2(spawned.position.x, -step * (spawn_index + 1) - step * 0.5)
+					tweens.append(spawned.tween_to(board_pos_to_world(Vector2i(x, y)), 0.25))
+					spawn_index += 1
 	if tweens.is_empty():
 		return
 	await tweens[tweens.size() - 1].finished
+
+# Refill-time spawn: ask the item spawner first. If it returns an item and
+# we're under the on-board cap, spawn an ItemPiece; otherwise a normal piece.
+func _spawn_refill_piece(board_pos: Vector2i) -> Piece:
+	if _item_spawner != null and _items_on_board.size() < MAX_ITEMS_ON_BOARD:
+		var item_res: BoardItem = _item_spawner.should_spawn_item()
+		if item_res != null:
+			var ip: ItemPiece = ItemPiece.new()
+			ip.board_pos = board_pos
+			ip.position = board_pos_to_world(board_pos)
+			_piece_layer.add_child(ip)
+			ip.configure_item(item_res)
+			_items_on_board.append(ip)
+			return ip
+	var kind: int = _roll_refill_kind()
+	var p := _make_piece(kind, board_pos)
+	_piece_layer.add_child(p)
+	return p
+
+# Phase D: for each cleared cell, every ItemPiece with at least one cleared
+# neighbour (8-dir, including the cell itself) loses integrity by the count of
+# neighbours in the clear set. When integrity hits 0, the item triggers: emit
+# item_broken, remove the cell, and let the refill pass replace it.
+func _tick_items_for_cleared(cleared: Array) -> void:
+	if cleared.is_empty() or _items_on_board.is_empty():
+		return
+	var cleared_set: Dictionary = {}
+	for c in cleared:
+		cleared_set[c] = true
+	var survivors: Array[ItemPiece] = []
+	var triggered: Array[ItemPiece] = []
+	for ip in _items_on_board:
+		if ip == null or not is_instance_valid(ip):
+			continue
+		var count: int = _count_adjacent_in_set(ip.board_pos, cleared_set)
+		if count <= 0:
+			survivors.append(ip)
+			continue
+		var broke: bool = ip.decrement_integrity(count)
+		if broke:
+			triggered.append(ip)
+		else:
+			survivors.append(ip)
+	_items_on_board = survivors
+	for ip in triggered:
+		_break_item(ip)
+
+# 8-dir adjacency count of a position against a set of Vector2i cells. The
+# item's own cell is intentionally excluded — matches can't form on it.
+func _count_adjacent_in_set(pos: Vector2i, cleared_set: Dictionary) -> int:
+	var count: int = 0
+	for dy in range(-1, 2):
+		for dx in range(-1, 2):
+			if dx == 0 and dy == 0:
+				continue
+			var n := Vector2i(pos.x + dx, pos.y + dy)
+			if cleared_set.has(n):
+				count += 1
+	return count
+
+# Triggered item: notify combat (which dispatches the effect), spawn a small
+# particle burst, queue-free the ItemPiece, and clear its grid slot so gravity
+# refills with a normal piece next pass.
+func _break_item(ip: ItemPiece) -> void:
+	var pos: Vector2i = ip.board_pos
+	var item_res: BoardItem = ip.item
+	# Visual: reuse MatchParticles with the item tint. A dedicated particle is
+	# Phase I polish; this reads as a "thing broke here" beat.
+	var tint: Color = item_res.tint if item_res != null else Color.WHITE
+	MatchParticles.spawn(ip.position, tint, _piece_layer, -1, 4)
+	grid[pos.y][pos.x] = null
+	ip.queue_free()
+	emit_signal("item_broken", item_res, pos)
 
 func shuffle_board_if_dead() -> bool:
 	var kg := _kind_snapshot()

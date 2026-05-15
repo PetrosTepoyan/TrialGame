@@ -22,17 +22,17 @@ const CHAPTER_THEMES := ["forest", "wall", "keep"]
 #
 # Index = level-in-block (0..9). 10 regular battles per checkpoint block.
 # Phase E extended the curve from 5 entries → 10 to span a full checkpoint block.
-const LEVEL_HP_CURVE: Array[float] = [0.70, 0.80, 0.90, 1.00, 1.10, 1.25, 1.40, 1.55, 1.75, 1.95]
-const LEVEL_DMG_CURVE: Array[float] = [0.70, 0.78, 0.88, 1.00, 1.12, 1.24, 1.38, 1.50, 1.62, 1.78]
+const LEVEL_HP_CURVE: Array[float] = [0.70, 0.75, 0.85, 0.90, 1.00, 1.05, 1.15, 1.20, 1.30, 1.40]
+const LEVEL_DMG_CURVE: Array[float] = [0.60, 0.70, 0.80, 0.90, 1.00, 1.10, 1.20, 1.30, 1.40, 1.50]
 # Chapter baseline HP/dmg before per-level curve. Chapter 0 is the gentlest.
-const CHAPTER_BASE_HP: Array[float] = [55.0, 95.0, 145.0]
+const CHAPTER_BASE_HP: Array[float] = [60.0, 110.0, 200.0]
 const CHAPTER_BASE_DMG: Array[float] = [5.0, 8.5, 11.5]
 # Tower boss (5th / final checkpoint of each chapter): per-chapter HP/dmg.
-const TOWER_HP_BY_CHAPTER: Array[float] = [220.0, 360.0, 520.0]
-const TOWER_DMG_BY_CHAPTER: Array[float] = [11.0, 14.0, 18.0]
+const TOWER_HP_BY_CHAPTER: Array[float] = [380.0, 560.0, 800.0]
+const TOWER_DMG_BY_CHAPTER: Array[float] = [16.0, 24.0, 34.0]
 # In-chapter checkpoints (1st..4th) — smaller bosses gating each block.
-const CHECKPOINT_HP_BY_CHAPTER: Array[float] = [220.0, 320.0, 440.0]
-const CHECKPOINT_DMG_BY_CHAPTER: Array[float] = [10.0, 16.0, 23.0]
+const CHECKPOINT_HP_BY_CHAPTER: Array[float] = [240.0, 360.0, 520.0]
+const CHECKPOINT_DMG_BY_CHAPTER: Array[float] = [12.0, 18.0, 26.0]
 # King: the wall.
 const KING_HP: float = 620.0
 const KING_DMG: float = 17.0
@@ -196,8 +196,13 @@ static func generate(castle_index: int) -> CastleResource:
 			cp.enemy_attack_interval = 1
 			cp.is_checkpoint = true
 			cp.checkpoint_index = block_idx
-			# TODO Phase G: attach EncounterModifier for chapter 1 checkpoint levels
-			# (CP1 garrison, CP2 archers, CP3 catacombs, CP4 pier, CP5 supply caravan).
+			# Phase G/H: chapter 1 (index 0) gets the named checkpoint encounters.
+			# Block 4 of chapter 1 is the tower boss "Supply Tower Warden" — CP5
+			# combines the supply-caravan keg gimmick with the resupply boss
+			# mechanic into one fight. Chapter 2/3 stay procedural per spec.
+			if ch_idx == 0:
+				cp.encounter_modifier = _make_chapter1_encounter(block_idx)
+				_apply_chapter1_naming(cp, block_idx)
 			ch.levels.append(cp)
 		castle.chapters.append(ch)
 
@@ -287,6 +292,84 @@ static func _make_boss_modifier(ch_idx: int, mult: float) -> BossModifier:
 	bm.special_attack_damage = int((8 + ch_idx * 4) * mult)
 	bm.description = "Tower Warden — heavy armor and enrage at low HP"
 	return bm
+
+static func _make_chapter1_encounter(block_idx: int) -> EncounterModifier:
+	# One named encounter per block in chapter 1. Block 4 = tower boss; the
+	# CP5 supply-warden behavior layers keg defuse, resupply heal, and L2
+	# interrupt into a single fight.
+	match block_idx:
+		0: return _make_cp1_modifier()
+		1: return _make_cp2_modifier()
+		2: return _make_cp3_modifier()
+		3: return _make_cp4_modifier()
+		4: return _make_cp5_modifier()
+	return null
+
+static func _apply_chapter1_naming(cp: LevelResource, block_idx: int) -> void:
+	# Override the generic checkpoint name with the spec's named encounter so
+	# the chapter map / level label reads "Forward Garrison", "Wall Archers",
+	# etc. Block 4 also gets the Supply Tower Warden boss title.
+	match block_idx:
+		0:
+			cp.level_name = "Forward Garrison"
+			cp.enemy_name = "Garrison Captain"
+		1:
+			cp.level_name = "Wall Archers"
+			cp.enemy_name = "Archer Sergeant"
+		2:
+			cp.level_name = "Catacombs"
+			cp.enemy_name = "Catacomb Dweller"
+		3:
+			cp.level_name = "Naval Pier"
+			cp.enemy_name = "Pier Bombardier"
+		4:
+			cp.level_name = "Supply Tower"
+			cp.enemy_name = "Supply Tower Warden"
+
+static func _make_cp1_modifier() -> EncounterModifier:
+	var em := EncounterModifier.new()
+	em.encounter_id = "cp1_garrison"
+	em.enemies_in_a_row = 5
+	em.forced_item_weights = {"shield": 3.0, "red_potion": 3.0}
+	return em
+
+static func _make_cp2_modifier() -> EncounterModifier:
+	var em := EncounterModifier.new()
+	em.encounter_id = "cp2_archers"
+	em.ranged_volley_period = 6.0
+	em.ranged_volley_damage = 10
+	em.forced_item_weights = {"shield": 4.0}
+	return em
+
+static func _make_cp3_modifier() -> EncounterModifier:
+	var em := EncounterModifier.new()
+	em.encounter_id = "cp3_catacombs"
+	em.weak_to_dot_kinds = [
+		StatusEffect.Kind.BURN,
+		StatusEffect.Kind.IGNITE,
+		StatusEffect.Kind.ACID_BURN,
+	]
+	em.weak_to_dot_multiplier = 2.0
+	em.forced_item_weights = {"acid": 3.0, "fire_bomb": 3.0}
+	return em
+
+static func _make_cp4_modifier() -> EncounterModifier:
+	var em := EncounterModifier.new()
+	em.encounter_id = "cp4_pier"
+	em.cannon_period = 8.0
+	em.cannon_telegraph_time = 2.0
+	em.cannon_damage = 18
+	return em
+
+static func _make_cp5_modifier() -> EncounterModifier:
+	var em := EncounterModifier.new()
+	em.encounter_id = "cp5_supply_warden"
+	em.resupply_interval_seconds = 20.0
+	em.resupply_heal_fraction = 0.10
+	em.resupply_telegraph_seconds = 5.0
+	em.interrupt_damage_threshold = 200
+	em.forced_item_weights = {"fire_bomb": 8.0, "red_potion": 0.5}
+	return em
 
 static func _make_king_modifier(mult: float) -> BossModifier:
 	var bm := BossModifier.new()

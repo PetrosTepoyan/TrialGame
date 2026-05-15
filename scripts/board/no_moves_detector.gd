@@ -38,6 +38,10 @@ static func _swap_creates_match(grid: Array, x1: int, y1: int, x2: int, y2: int,
 	var k2: int = grid[y2][x2]
 	if k1 == k2:
 		return false
+	# Phase D: ItemPiece cells (kind == -1) are anchored — never propose a swap
+	# that involves one. Treat them as immovable for hint / shuffle detection.
+	if k1 < 0 or k2 < 0:
+		return false
 	grid[y1][x1] = k2
 	grid[y2][x2] = k1
 	var has := _has_any_match_at(grid, x1, y1, dmin) \

@@ -26,6 +26,11 @@ signal auto_attack_fired(is_player: bool, damage: int)
 # Stub: Phase D wires items, but the signal lives here so other systems can
 # subscribe without bouncing through a future refactor.
 signal item_broken(item: Resource, location: Vector2i)
+# Phase G/H: encounter-behavior plumbing. Telegraph banners surface gimmick
+# state to battle.gd; enemy_replaced lets CP1 swap in fresh garrison enemies
+# without firing battle_won.
+signal encounter_telegraph(text: String, seconds: float)
+signal enemy_replaced(remaining_count: int)
 
 enum State { ACTIVE, ENDED }
 
@@ -51,6 +56,9 @@ var enemy_auto: AutoAttackLoop = null
 
 var _status_timer: Timer = null
 
+# Phase G/H: active encounter behavior (CP1..CP5). Null on regular levels.
+var _encounter_behavior: EncounterBehavior = null
+
 # Cascade accumulator: cascade-scope bonus is applied at cascade_finished.
 # Tracks per-(kind,level) counts of matches in the current cascade so the
 # bonus tier matches the .tres `combo_bonus_pct` table.
@@ -66,12 +74,44 @@ func _ready() -> void:
 	board.match_resolved.connect(_on_match_resolved)
 	board.cascade_finished.connect(_on_cascade_finished)
 	board.invalid_swap.connect(_on_invalid_swap)
+	# Phase D: route board-side item breaks through ItemEffects, then re-emit the
+	# controller's own item_broken signal for battle.gd / encounter behaviors.
+	if board.has_signal("item_broken"):
+		board.item_broken.connect(_on_board_item_broken)
 	player.died.connect(_on_player_died)
 	enemy.died.connect(_on_enemy_died)
 	_install_mana_system()
 	_install_auto_attack_loops()
 	_install_status_timer()
+	_wire_item_spawner()
 	_apply_debug_overrides()
+
+# Hand the spawner a Callable into the player's HP fraction so it can boost the
+# spawn chance as the player gets low.
+func _wire_item_spawner() -> void:
+	if board == null or not board.has_method("get_item_spawner"):
+		return
+	var spawner: ItemSpawner = board.get_item_spawner()
+	if spawner == null:
+		return
+	spawner.set_player_hp_provider(Callable(self, "_player_hp_fraction"))
+
+func _player_hp_fraction() -> float:
+	if player == null or player.max_hp <= 0:
+		return 1.0
+	return float(player.current_hp) / float(player.max_hp)
+
+func _on_board_item_broken(item: Resource, pos: Vector2i) -> void:
+	if state == State.ENDED:
+		return
+	var board_item: BoardItem = item as BoardItem
+	if board_item != null:
+		ItemEffects.apply_effect(board_item, player, enemy)
+	# Re-emit on this controller so battle.gd / encounter code can show feedback
+	# without listening to two different signal sources.
+	emit_signal("item_broken", item, pos)
+	if _encounter_behavior != null and board_item != null:
+		_encounter_behavior.on_item_broken(board_item, pos)
 
 # Re-read live debug overrides (Phase I will wire mana/spec controls; for now
 # we still honour the existing per-tick enemy damage / interval values so a
@@ -156,6 +196,7 @@ func _on_status_tick() -> void:
 	var enemy_dot: int = enemy.tick_dot_seconds(STATUS_TICK_SECONDS)
 	if enemy_dot > 0:
 		emit_signal("damage_dealt", false, enemy_dot, -1)
+		_notify_enemy_damaged(enemy_dot)
 	if state == State.ENDED:
 		return
 	var player_dot: int = player.tick_dot_seconds(STATUS_TICK_SECONDS)
@@ -180,6 +221,9 @@ func _on_match_resolved(kind: int, _count: int, longest_run: int, _from_rainbow:
 		mana_system.add(mana_amount)
 	# Track for cascade-scope bonus.
 	_cascade_matches.append({ "kind": kind, "level": lvl, "longest_run": longest_run })
+	# Fan out to the active encounter behavior, if any.
+	if _encounter_behavior != null:
+		_encounter_behavior.on_match_resolved(kind, lvl, longest_run)
 
 func _consume_match_result(result: Dictionary, kind: int) -> void:
 	var damage: int = int(result.get("damage", 0))
@@ -198,6 +242,7 @@ func _consume_match_result(result: Dictionary, kind: int) -> void:
 		if dealt > 0:
 			AudioBus.play_kind_hit(kind)
 			emit_signal("damage_dealt", false, dealt, kind)
+			_notify_enemy_damaged(dealt)
 	if status_v != null:
 		var fx: StatusEffect = status_v
 		enemy.apply_status(fx)
@@ -265,6 +310,7 @@ func _apply_cascade_bonus() -> void:
 		if dealt > 0:
 			AudioBus.play_kind_hit(k)
 			emit_signal("damage_dealt", false, dealt, k)
+			_notify_enemy_damaged(dealt)
 
 func _on_invalid_swap() -> void:
 	pass
@@ -303,12 +349,15 @@ func fire_special(level_requested: int) -> Dictionary:
 		if dealt > 0:
 			AudioBus.play_kind_hit(PieceType.Kind.SWORD)
 			emit_signal("damage_dealt", false, dealt, -1)
+			_notify_enemy_damaged(dealt)
 	var status_v: Variant = data.get("status", null)
 	if status_v != null:
 		var fx: StatusEffect = status_v
 		enemy.apply_status(fx)
 		emit_signal("status_applied", false, fx)
 	emit_signal("spec_attack_fired", lvl)
+	if _encounter_behavior != null:
+		_encounter_behavior.on_spec_attack_fired(lvl)
 	Haptics.heavy_tap()
 	return data
 
@@ -327,12 +376,15 @@ func _load_special(lvl: int) -> SpecialAttack:
 func _on_player_auto_attacked(damage: int) -> void:
 	if damage > 0:
 		emit_signal("damage_dealt", false, damage, -1)
+		_notify_enemy_damaged(damage)
 	emit_signal("auto_attack_fired", true, damage)
 	Haptics.medium_tap()
 
 func _on_enemy_auto_attacked(damage: int) -> void:
 	if damage > 0:
 		emit_signal("damage_dealt", true, damage, -1)
+		if _encounter_behavior != null:
+			_encounter_behavior.on_player_attacked(damage)
 	emit_signal("auto_attack_fired", false, damage)
 	Haptics.light_tap()
 
@@ -348,6 +400,12 @@ func _on_player_died(_a: CombatActor) -> void:
 func _on_enemy_died(_a: CombatActor) -> void:
 	if state == State.ENDED:
 		return
+	# Encounter behaviors may absorb the death — CP1 garrison swaps in the next
+	# enemy, refills HP, and returns true so battle_won does NOT fire.
+	if _encounter_behavior != null:
+		var absorbed: bool = _encounter_behavior.on_enemy_died()
+		if absorbed:
+			return
 	state = State.ENDED
 	_stop_loops()
 	emit_signal("battle_won")
@@ -359,3 +417,20 @@ func _stop_loops() -> void:
 		enemy_auto.stop()
 	if _status_timer != null:
 		_status_timer.stop()
+
+# --- Encounter behavior plumbing (Phase G/H) -----------------------------
+
+# battle.gd instantiates the right EncounterBehavior subclass and hands it in.
+# We hold the reference; the per-signal forwarders inline check _encounter_behavior
+# so we don't bind on every dispatch.
+func register_encounter_behavior(b: EncounterBehavior) -> void:
+	_encounter_behavior = b
+
+# Inline helper so the four enemy-damage paths (match, spec, auto-attack,
+# DoT, cascade bonus) all funnel into the behavior the same way without each
+# growing a connect()/disconnect() pair.
+func _notify_enemy_damaged(amount: int) -> void:
+	if _encounter_behavior == null or amount <= 0:
+		return
+	if _encounter_behavior.has_method("on_enemy_damaged"):
+		_encounter_behavior.call("on_enemy_damaged", amount)

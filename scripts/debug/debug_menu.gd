@@ -19,9 +19,21 @@ var _tab_container: TabContainer = null
 # Cheat state polled in _process.
 var _invincible: bool = false
 var _last_player_hp: int = -1
+# Phase I cheats: infinite-mana checkbox keeps the bar pinned at MAX_MANA every
+# frame; zero-auto-attack checkbox stores both actors' originals so we can
+# restore them on uncheck.
+var _infinite_mana: bool = false
+var _zero_auto_dmg: bool = false
+var _orig_player_base_damage: int = -1
+var _orig_enemy_base_damage: int = -1
 
 # Stats labels (rebuilt each frame in the Stats tab).
 var _stats_label: Label = null
+
+# Live Mana spinbox — we mirror engine-side mana into it each frame so the
+# control stays in sync with auto-gain from matches.
+var _mana_spin: SpinBox = null
+var _mana_spin_syncing: bool = false
 
 # Sliders we need to read out for overrides.
 var _slider_paths: Dictionary = {}  # Slider/SpinBox -> override path
@@ -92,6 +104,7 @@ func _build_ui() -> void:
 
 	_tab_container.add_child(_build_stats_tab())
 	_tab_container.add_child(_build_combat_tab())
+	_tab_container.add_child(_build_items_tab())
 	_tab_container.add_child(_build_board_tab())
 	_tab_container.add_child(_build_audio_tab())
 	_tab_container.add_child(_build_haptics_tab())
@@ -172,6 +185,82 @@ func _build_combat_tab() -> ScrollContainer:
 	_add_button(vbox, "Heal player to full", _on_heal_player)
 	_add_button(vbox, "Kill enemy", _on_kill_enemy)
 	_add_button(vbox, "Stun enemy 99s", _on_stun_enemy)
+
+	vbox.add_child(_section_header("Mana / Spec"))
+
+	# Live mana spinbox. We don't use _add_spin_row because the value lives on
+	# the live ManaSystem, not in DebugOverlay's override dict.
+	var mana_row := HBoxContainer.new()
+	mana_row.add_theme_constant_override("separation", 12)
+	vbox.add_child(mana_row)
+	var mana_lbl := Label.new()
+	mana_lbl.text = "Mana"
+	mana_lbl.add_theme_font_size_override("font_size", FONT_BODY)
+	mana_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	mana_lbl.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	mana_row.add_child(mana_lbl)
+	_mana_spin = SpinBox.new()
+	_mana_spin.min_value = 0
+	_mana_spin.max_value = ManaSystem.MAX_MANA
+	_mana_spin.step = 1
+	_mana_spin.custom_minimum_size = Vector2(SPIN_WIDTH, TAP_HEIGHT)
+	_mana_spin.add_theme_font_size_override("font_size", FONT_BODY)
+	_mana_spin.value_changed.connect(func(v: float) -> void:
+		# Ignore our own mirroring writes (set in _process when ManaSystem
+		# changes); only act on real user edits.
+		if _mana_spin_syncing:
+			return
+		_set_live_mana(int(v))
+	)
+	mana_row.add_child(_mana_spin)
+
+	# Spec-fire buttons: bump mana to threshold so fire_special() accepts the
+	# request, then dispatch. fire_special downshifts to the highest charge if
+	# we'd overshoot, so this is safe even mid-battle.
+	_add_button(vbox, "Fire L1 spec", func() -> void: _on_fire_spec(1))
+	_add_button(vbox, "Fire L2 spec", func() -> void: _on_fire_spec(2))
+	_add_button(vbox, "Fire L3 spec", func() -> void: _on_fire_spec(3))
+
+	_add_check(vbox, "Infinite mana", _infinite_mana, func(state: bool) -> void:
+		_infinite_mana = state
+		if _overlay:
+			_overlay.set_override("cheat.infinite_mana", state)
+	)
+	_add_check(vbox, "Auto-attack damage = 0", _zero_auto_dmg, func(state: bool) -> void:
+		_set_zero_auto_damage(state)
+	)
+
+	return scroll
+
+
+# ---- Items tab -------------------------------------------------------------
+
+func _build_items_tab() -> ScrollContainer:
+	var scroll := _make_tab("Items")
+	var vbox := _tab_content(scroll)
+
+	vbox.add_child(_section_header("Force-trigger effects"))
+	vbox.add_child(_dim_label("Applies the .tres effect directly (skips spawn/break)."))
+
+	# Each entry: (label, .tres filename in data/board_items/).
+	var entries: Array = [
+		["Trigger Shield", "shield.tres"],
+		["Trigger Broken Shield", "broken_shield.tres"],
+		["Trigger Red Potion", "red_potion.tres"],
+		["Trigger Sword+", "sword_up.tres"],
+		["Trigger Acid", "acid.tres"],
+		["Trigger Fire Bomb", "fire_bomb.tres"],
+	]
+	for entry_v in entries:
+		var entry: Array = entry_v
+		var label: String = entry[0]
+		var fname: String = entry[1]
+		_add_button(vbox, label, func() -> void: _on_trigger_item(fname))
+
+	vbox.add_child(_section_header("Spawn"))
+	# "Force item spawn every refill" was deferred: ItemSpawner has no public
+	# knob (chance is a const) and we can't edit item_spawner.gd in this scope.
+	vbox.add_child(_dim_label("Force item spawn every refill: deferred (ItemSpawner mutation out of scope)."))
 
 	return scroll
 
@@ -299,6 +388,19 @@ func _build_progression_tab() -> ScrollContainer:
 	_add_button(vbox, "Reset save", _on_reset_save)
 	_add_button(vbox, "Go to victory", _on_goto_victory)
 	_add_button(vbox, "Go to game over", _on_goto_gameover)
+
+	vbox.add_child(_section_header("Jump to checkpoint"))
+	# Each checkpoint = chapter 0, block N, level 10 (the per-block CP slot).
+	_add_button(vbox, "Jump to CP1", func() -> void: _on_jump_to_checkpoint(0, 0))
+	_add_button(vbox, "Jump to CP2", func() -> void: _on_jump_to_checkpoint(0, 1))
+	_add_button(vbox, "Jump to CP3", func() -> void: _on_jump_to_checkpoint(0, 2))
+	_add_button(vbox, "Jump to CP4", func() -> void: _on_jump_to_checkpoint(0, 3))
+	_add_button(vbox, "Jump to CP5", func() -> void: _on_jump_to_checkpoint(0, 4))
+	_add_button(vbox, "Jump to Tower", func() -> void: _on_jump_to_checkpoint(0, 4))
+
+	vbox.add_child(_section_header("Checkpoint state"))
+	_add_button(vbox, "Mark checkpoint cleared", _on_mark_checkpoint_cleared)
+	_add_button(vbox, "Force death + rollback", _on_force_death_rollback)
 	return scroll
 
 
@@ -464,6 +566,32 @@ func _build_stats_text() -> String:
 				lines.append("Mana: %d / %d" % [mana_val, int(ManaSystem.MAX_MANA)])
 				if ms_v.has_method("get_charge_level"):
 					lines.append("Charge level: %d" % int(ms_v.call("get_charge_level")))
+		# Items-on-board + time-since-last-spawn read private fields by name,
+		# so guard with .get and fall back to "N/A" if the field is absent
+		# (e.g. board variant we don't recognise).
+		var board_v: Variant = null
+		if "board" in cc:
+			board_v = cc.get("board")
+		if board_v is Node:
+			var board_node: Node = board_v
+			var items_arr: Variant = board_node.get("_items_on_board")
+			if items_arr is Array:
+				lines.append("Items on board: %d" % (items_arr as Array).size())
+			else:
+				lines.append("Items on board: N/A")
+			var spawner_v: Variant = null
+			if board_node.has_method("get_item_spawner"):
+				spawner_v = board_node.call("get_item_spawner")
+			if spawner_v is Node:
+				var last_t: Variant = (spawner_v as Node).get("_last_spawn_time")
+				if typeof(last_t) == TYPE_FLOAT or typeof(last_t) == TYPE_INT:
+					var now: float = Time.get_ticks_msec() / 1000.0
+					lines.append("Time since last item spawn: %.1fs" % (now - float(last_t)))
+				else:
+					lines.append("Time since last item spawn: N/A")
+	var gs: Node = get_node_or_null("/root/GameState")
+	if gs and "current_block_index" in gs:
+		lines.append("Current block: %d / 4" % int(gs.get("current_block_index")))
 	return "\n".join(lines)
 
 
@@ -478,7 +606,9 @@ func _get_const(n: Node, key: String, default_v: Variant) -> Variant:
 
 
 func _apply_cheats() -> void:
-	if not _invincible:
+	# Three cheats share the same pump: invincibility, infinite mana, and
+	# mirroring engine-side mana into the Combat-tab spinbox.
+	if not _invincible and not _infinite_mana and _mana_spin == null:
 		return
 	var cc: Node = _find_combat_controller()
 	if cc == null:
@@ -500,6 +630,20 @@ func _apply_cheats() -> void:
 					player.set("current_hp", _last_player_hp)
 			else:
 				_last_player_hp = hp
+	# ManaSystem pump: pin to MAX_MANA when infinite, otherwise just mirror
+	# current value into the spinbox UI.
+	if "mana_system" in cc:
+		var ms_v: Variant = cc.get("mana_system")
+		if ms_v is Node and ms_v != null:
+			if _infinite_mana:
+				if int(ms_v.get("mana")) != ManaSystem.MAX_MANA:
+					ms_v.set("mana", ManaSystem.MAX_MANA)
+			if _mana_spin != null:
+				var cur: int = int(ms_v.get("mana"))
+				if int(_mana_spin.value) != cur:
+					_mana_spin_syncing = true
+					_mana_spin.value = float(cur)
+					_mana_spin_syncing = false
 
 
 # ---- Combat lookup helpers -------------------------------------------------
@@ -758,3 +902,145 @@ func _on_goto_gameover() -> void:
 			return
 	if router.has_method("goto"):
 		router.call("goto", "res://scenes/ui/game_over.tscn")
+
+
+# ---- Phase I: mana / spec / items / checkpoint callbacks ------------------
+
+func _set_live_mana(value: int) -> void:
+	var cc: Node = _find_combat_controller()
+	if cc == null or not ("mana_system" in cc):
+		return
+	var ms_v: Variant = cc.get("mana_system")
+	if ms_v is Node and ms_v != null:
+		ms_v.set("mana", clampi(value, 0, ManaSystem.MAX_MANA))
+
+
+func _on_fire_spec(lvl: int) -> void:
+	# fire_special() requires mana to be at or above the requested tier. Bump the
+	# bar to the threshold first so the tester gets a deterministic outcome even
+	# if the bar is empty.
+	var cc: Node = _find_combat_controller()
+	if cc == null:
+		return
+	var threshold: int = 100 * clampi(lvl, 1, 3)
+	if "mana_system" in cc:
+		var ms_v: Variant = cc.get("mana_system")
+		if ms_v is Node and ms_v != null:
+			if int(ms_v.get("mana")) < threshold:
+				ms_v.set("mana", threshold)
+	if cc.has_method("fire_special"):
+		cc.call("fire_special", lvl)
+
+
+func _set_zero_auto_damage(state: bool) -> void:
+	_zero_auto_dmg = state
+	if _overlay:
+		_overlay.set_override("cheat.zero_auto_damage", state)
+	var cc: Node = _find_combat_controller()
+	if cc == null:
+		return
+	var player: Node = _get_actor_from_cc(cc, "player")
+	var enemy: Node = _get_actor_from_cc(cc, "enemy")
+	if state:
+		# Snapshot originals on the first toggle-on so toggle-off restores
+		# the real values (not whatever they happen to be after a buff).
+		if player != null and _orig_player_base_damage < 0 and "base_damage" in player:
+			_orig_player_base_damage = int(player.get("base_damage"))
+		if enemy != null and _orig_enemy_base_damage < 0 and "base_damage" in enemy:
+			_orig_enemy_base_damage = int(enemy.get("base_damage"))
+		if player != null and "base_damage" in player:
+			player.set("base_damage", 0)
+		if enemy != null and "base_damage" in enemy:
+			enemy.set("base_damage", 0)
+		# AutoAttackLoop reads its own base_damage at install time; zero both
+		# so the per-tick damage actually drops to zero.
+		_set_auto_loop_damage(cc, 0, 0)
+	else:
+		if player != null and "base_damage" in player and _orig_player_base_damage >= 0:
+			player.set("base_damage", _orig_player_base_damage)
+		if enemy != null and "base_damage" in enemy and _orig_enemy_base_damage >= 0:
+			enemy.set("base_damage", _orig_enemy_base_damage)
+		_set_auto_loop_damage(cc, _orig_player_base_damage, _orig_enemy_base_damage)
+		_orig_player_base_damage = -1
+		_orig_enemy_base_damage = -1
+
+
+func _set_auto_loop_damage(cc: Node, player_dmg: int, enemy_dmg: int) -> void:
+	for f in ["player_auto", "enemy_auto"]:
+		if not (f in cc):
+			continue
+		var loop_v: Variant = cc.get(f)
+		if not (loop_v is Node) or loop_v == null:
+			continue
+		var d: int = player_dmg if f == "player_auto" else enemy_dmg
+		if d < 0:
+			continue
+		if "base_damage" in loop_v:
+			(loop_v as Node).set("base_damage", d)
+
+
+func _on_trigger_item(fname: String) -> void:
+	var path: String = "res://data/board_items/%s" % fname
+	if not ResourceLoader.exists(path):
+		push_warning("Debug: %s missing" % path)
+		return
+	var item: Resource = load(path)
+	if item == null:
+		return
+	var cc: Node = _find_combat_controller()
+	if cc == null:
+		return
+	var player: Node = _get_actor_from_cc(cc, "player")
+	var enemy: Node = _get_actor_from_cc(cc, "enemy")
+	# ItemEffects.apply_effect is a static method on the class_name-registered
+	# script; calling it directly applies the .tres effect without needing the
+	# board to spawn or break the item.
+	ItemEffects.apply_effect(item as BoardItem, player as CombatActor, enemy as CombatActor)
+
+
+func _on_jump_to_checkpoint(chapter: int, block: int) -> void:
+	var gs: Node = get_node_or_null("/root/GameState")
+	var router: Node = get_node_or_null("/root/SceneRouter")
+	if gs == null or router == null:
+		return
+	# Checkpoint level lives at level-in-block index 10 (the per-block CP slot).
+	if "chapter_index" in gs:
+		gs.set("chapter_index", chapter)
+	if "current_block_index" in gs:
+		gs.set("current_block_index", block)
+	if "current_level_in_block" in gs:
+		gs.set("current_level_in_block", 10)
+	# Keep the legacy flat level_index pointer in sync via set_current_pointer
+	# if it exists; otherwise compute manually.
+	if gs.has_method("set_current_pointer"):
+		gs.call("set_current_pointer", chapter, block, 10)
+	elif "level_index" in gs:
+		gs.set("level_index", block * 11 + 10)
+	if _overlay:
+		_overlay.close_menu()
+	if router.has_method("goto_battle"):
+		router.call("goto_battle")
+
+
+func _on_mark_checkpoint_cleared() -> void:
+	var gs: Node = get_node_or_null("/root/GameState")
+	if gs == null or not gs.has_method("mark_checkpoint_cleared"):
+		return
+	var chapter: int = 0
+	var block: int = 0
+	if "chapter_index" in gs:
+		chapter = int(gs.get("chapter_index"))
+	if "current_block_index" in gs:
+		block = int(gs.get("current_block_index"))
+	gs.call("mark_checkpoint_cleared", chapter, block)
+
+
+func _on_force_death_rollback() -> void:
+	var gs: Node = get_node_or_null("/root/GameState")
+	var router: Node = get_node_or_null("/root/SceneRouter")
+	if gs != null and gs.has_method("rollback_to_checkpoint"):
+		gs.call("rollback_to_checkpoint")
+	if _overlay:
+		_overlay.close_menu()
+	if router != null and router.has_method("goto_chapter_map"):
+		router.call("goto_chapter_map")
