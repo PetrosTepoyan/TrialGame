@@ -17,30 +17,30 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 
 [node name="VBox" type="VBoxContainer" parent="Center"]
-custom_minimum_size = Vector2(700, 0)
-theme_override_constants/separation = 20
+custom_minimum_size = Vector2(900, 0)
+theme_override_constants/separation = 24
 
 [node name="Title" type="Label" parent="Center/VBox"]
 horizontal_alignment = 1
 text = "Your line falls."
-theme_override_font_sizes/font_size = 64
+theme_override_font_sizes/font_size = 100
 theme_override_colors/font_color = Color(0.9, 0.4, 0.4, 1)
 
 [node name="Detail" type="Label" parent="Center/VBox"]
 horizontal_alignment = 1
 text = "The castle holds — for now."
-theme_override_font_sizes/font_size = 24
+theme_override_font_sizes/font_size = 42
 theme_override_colors/font_color = Color(0.85, 0.78, 0.62, 1)
 
 [node name="Spacer" type="Control" parent="Center/VBox"]
 custom_minimum_size = Vector2(0, 40)
 
 [node name="Retry" type="Button" parent="Center/VBox"]
-custom_minimum_size = Vector2(0, 80)
+custom_minimum_size = Vector2(0, 136)
 text = "Retry"
-theme_override_font_sizes/font_size = 32
+theme_override_font_sizes/font_size = 56
 
 [node name="Back" type="Button" parent="Center/VBox"]
-custom_minimum_size = Vector2(0, 60)
+custom_minimum_size = Vector2(0, 102)
 text = "Back to Map"
-theme_override_font_sizes/font_size = 24
+theme_override_font_sizes/font_size = 42

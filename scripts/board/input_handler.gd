@@ -16,8 +16,10 @@ var _touch_start_time: float = 0.0
 func _unhandled_input(event: InputEvent) -> void:
 	if board == null:
 		return
-	if not board.can_accept_input():
-		return
+	# Track touches even while the board is busy so a held finger that started
+	# during a cascade can resolve into a swipe the moment input is accepted —
+	# otherwise the missed _begin_touch leaves _touch_active false and the
+	# subsequent drag is silently dropped.
 	if event is InputEventScreenTouch or event is InputEventMouseButton:
 		var pos: Vector2 = _event_global_pos(event)
 		var pressed: bool = (event is InputEventScreenTouch and (event as InputEventScreenTouch).pressed) or (event is InputEventMouseButton and (event as InputEventMouseButton).pressed)
@@ -30,7 +32,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			return
 		var pos: Vector2 = _event_global_pos(event)
 		var delta: Vector2 = pos - _touch_start_pos
-		if delta.length() >= SWIPE_THRESHOLD:
+		if delta.length() >= SWIPE_THRESHOLD and board.can_accept_input():
 			_resolve_swipe(delta)
 
 func _event_global_pos(event: InputEvent) -> Vector2:

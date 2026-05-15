@@ -67,7 +67,7 @@ func _build_chapter_card(ch_idx: int, chapter: ChapterResource) -> Control:
 
 	# Theme thumbnail on the left.
 	var thumb := TextureRect.new()
-	thumb.custom_minimum_size = Vector2(150, 110)
+	thumb.custom_minimum_size = Vector2(220, 180)
 	thumb.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	thumb.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
 	var tex_path: String = _theme_texture_path(chapter.theme)
@@ -84,7 +84,7 @@ func _build_chapter_card(ch_idx: int, chapter: ChapterResource) -> Control:
 
 	var hdr := Label.new()
 	hdr.text = chapter.chapter_name
-	hdr.add_theme_font_size_override("font_size", 26)
+	hdr.add_theme_font_size_override("font_size", 46)
 	hdr.add_theme_color_override("font_color", Color(0.97, 0.84, 0.42, 1.0))
 	hdr.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.7))
 	hdr.add_theme_constant_override("shadow_offset_x", 1)
@@ -94,7 +94,7 @@ func _build_chapter_card(ch_idx: int, chapter: ChapterResource) -> Control:
 	if chapter.motto != "":
 		var motto := Label.new()
 		motto.text = "\"%s\"" % chapter.motto
-		motto.add_theme_font_size_override("font_size", 15)
+		motto.add_theme_font_size_override("font_size", 26)
 		motto.add_theme_color_override("font_color", Color(0.84, 0.74, 0.54, 0.95))
 		motto.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		v.add_child(motto)
@@ -121,20 +121,20 @@ func _build_chapter_card(ch_idx: int, chapter: ChapterResource) -> Control:
 func _build_level_button(ch_idx: int, lvl_idx: int, lvl: LevelResource) -> Button:
 	var btn := Button.new()
 	btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	btn.custom_minimum_size = Vector2(72, 78)
+	btn.custom_minimum_size = Vector2(120, 130)
 	var unlocked: bool = GameState.is_level_unlocked(GameState.castle_index, ch_idx, lvl_idx)
 	var completed: bool = GameState.is_level_completed(GameState.castle_index, ch_idx, lvl_idx)
 
 	var label: String
 	if lvl.is_boss:
 		label = "⚔ Tower"
-		btn.custom_minimum_size = Vector2(120, 78)
+		btn.custom_minimum_size = Vector2(200, 130)
 		btn.add_theme_color_override("font_color", Color(1.0, 0.78, 0.30, 1.0))
-		btn.add_theme_font_size_override("font_size", 20)
+		btn.add_theme_font_size_override("font_size", 36)
 	else:
 		label = "%d" % (lvl_idx + 1)
 		btn.add_theme_color_override("font_color", Color(0.94, 0.86, 0.66, 1.0))
-		btn.add_theme_font_size_override("font_size", 22)
+		btn.add_theme_font_size_override("font_size", 38)
 
 	if completed:
 		var stars: int = GameState.get_level_stars(GameState.castle_index, ch_idx, lvl_idx)

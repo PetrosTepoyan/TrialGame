@@ -271,8 +271,16 @@ board_path = NodePath("../BoardArea/Board")
 player_actor_path = NodePath("../Actors/PlayerActor")
 enemy_actor_path = NodePath("../Actors/EnemyActor")
 
-[node name="ShieldChoicePopup" type="PanelContainer" parent="."]
+[node name="ShieldChoiceLayer" type="CanvasLayer" parent="."]
+layer = 10
 visible = false
+
+[node name="Backdrop" type="ColorRect" parent="ShieldChoiceLayer"]
+anchor_right = 1.0
+anchor_bottom = 1.0
+color = Color(0, 0, 0, 0.55)
+
+[node name="ShieldChoicePopup" type="PanelContainer" parent="ShieldChoiceLayer"]
 anchor_left = 0.5
 anchor_top = 0.5
 anchor_right = 0.5
@@ -282,36 +290,36 @@ offset_top = -200.0
 offset_right = 360.0
 offset_bottom = 200.0
 
-[node name="VBox" type="VBoxContainer" parent="ShieldChoicePopup"]
+[node name="VBox" type="VBoxContainer" parent="ShieldChoiceLayer/ShieldChoicePopup"]
 theme_override_constants/separation = 16
 
-[node name="Margin" type="MarginContainer" parent="ShieldChoicePopup/VBox"]
+[node name="Margin" type="MarginContainer" parent="ShieldChoiceLayer/ShieldChoicePopup/VBox"]
 theme_override_constants/margin_left = 24
 theme_override_constants/margin_right = 24
 theme_override_constants/margin_top = 24
 theme_override_constants/margin_bottom = 24
 
-[node name="Title" type="Label" parent="ShieldChoicePopup/VBox/Margin"]
+[node name="Title" type="Label" parent="ShieldChoiceLayer/ShieldChoicePopup/VBox/Margin"]
 horizontal_alignment = 1
 text = "Shield Combo!"
 theme_override_font_sizes/font_size = 50
 theme_override_colors/font_color = Color(0.95, 0.82, 0.42, 1)
 
-[node name="Subtitle" type="Label" parent="ShieldChoicePopup/VBox"]
+[node name="Subtitle" type="Label" parent="ShieldChoiceLayer/ShieldChoicePopup/VBox"]
 horizontal_alignment = 1
 text = "Choose how to spend it"
 theme_override_font_sizes/font_size = 32
 
-[node name="Buttons" type="HBoxContainer" parent="ShieldChoicePopup/VBox"]
+[node name="Buttons" type="HBoxContainer" parent="ShieldChoiceLayer/ShieldChoicePopup/VBox"]
 theme_override_constants/separation = 16
 alignment = 1
 
-[node name="ArmorBtn" type="Button" parent="ShieldChoicePopup/VBox/Buttons"]
+[node name="ArmorBtn" type="Button" parent="ShieldChoiceLayer/ShieldChoicePopup/VBox/Buttons"]
 custom_minimum_size = Vector2(280, 118)
 text = "+Armor (boost)"
 theme_override_font_sizes/font_size = 38
 
-[node name="StunBtn" type="Button" parent="ShieldChoicePopup/VBox/Buttons"]
+[node name="StunBtn" type="Button" parent="ShieldChoiceLayer/ShieldChoicePopup/VBox/Buttons"]
 custom_minimum_size = Vector2(280, 118)
 text = "Stun the enemy"
 theme_override_font_sizes/font_size = 38

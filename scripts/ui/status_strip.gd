@@ -22,7 +22,7 @@ func _render(effects: Array) -> void:
 		var fx: StatusEffect = fx_v
 		var lbl := Label.new()
 		lbl.text = "%s %d" % [StatusEffect.kind_to_string(fx.kind), fx.rounds_remaining]
-		lbl.add_theme_font_size_override("font_size", 18)
+		lbl.add_theme_font_size_override("font_size", 32)
 		lbl.add_theme_color_override("font_color", _color_for_kind(fx.kind))
 		lbl.add_theme_color_override("font_outline_color", Color.BLACK)
 		lbl.add_theme_constant_override("outline_size", 4)

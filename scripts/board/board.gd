@@ -13,7 +13,7 @@ const COLS := 9
 const CELL: float = Piece.SIZE
 const SPACING: float = 4.0
 const MAX_CASCADE_DEPTH := 20
-const DIAGONAL_MIN_LENGTH := 3  # set to 4 to dial down match frequency
+const DIAGONAL_MIN_LENGTH := 4  # set to 4 to dial down match frequency
 
 enum State { IDLE, SWAPPING, RESOLVING, SHUFFLING }
 

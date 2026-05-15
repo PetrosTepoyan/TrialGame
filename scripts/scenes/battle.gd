@@ -19,18 +19,18 @@ extends Control
 @onready var _exit_button: Button = $TopBar/ExitButton
 @onready var _floating_text_root: Node2D = $FloatingTextRoot
 @onready var _action_scale: ActionScale = $ActionScaleBar/ActionScale
-@onready var _shield_popup: PanelContainer = $ShieldChoicePopup
-@onready var _shield_armor_btn: Button = $ShieldChoicePopup/VBox/Buttons/ArmorBtn
-@onready var _shield_stun_btn: Button = $ShieldChoicePopup/VBox/Buttons/StunBtn
-@onready var _shield_subtitle: Label = $ShieldChoicePopup/VBox/Subtitle
+@onready var _shield_popup: CanvasLayer = $ShieldChoiceLayer
+@onready var _shield_armor_btn: Button = $ShieldChoiceLayer/ShieldChoicePopup/VBox/Buttons/ArmorBtn
+@onready var _shield_stun_btn: Button = $ShieldChoiceLayer/ShieldChoicePopup/VBox/Buttons/StunBtn
+@onready var _shield_subtitle: Label = $ShieldChoiceLayer/ShieldChoicePopup/VBox/Subtitle
 @onready var _tutorial: TutorialOverlay = $TutorialOverlay
 @onready var _settings_panel: SettingsPanel = $SettingsPanel
 
 # Track turns and starting HP so we can grant 1-3 stars on victory.
 var _rounds_taken: int = 0
 
-const FLOAT_FONT_SIZE_SMALL: int = 32
-const FLOAT_FONT_SIZE_BIG: int = 56
+const FLOAT_FONT_SIZE_SMALL: int = 56
+const FLOAT_FONT_SIZE_BIG: int = 88
 
 var _shake_base: Vector2 = Vector2.ZERO
 
@@ -175,7 +175,7 @@ func _on_pause() -> void:
 	_settings_panel.visible = not _settings_panel.visible
 
 func _on_exit_pressed() -> void:
-	SceneRouter.goto_chapter_map()
+	SceneRouter.goto_main_menu()
 
 func _on_round_finished_count() -> void:
 	_rounds_taken += 1
