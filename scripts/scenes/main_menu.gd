@@ -23,6 +23,9 @@ var _rng := RandomNumberGenerator.new()
 
 func _ready() -> void:
 	SafeArea.apply(self)
+	# Bleed Ink (matches the boot splash) into the safe-area bands so we don't
+	# show a seam against a battle's level colour if we just came back from one.
+	RenderingServer.set_default_clear_color(Color(0.07, 0.05, 0.09))
 	_rng.randomize()
 	_play_button.pressed.connect(_on_play_pressed)
 	_reset_button.pressed.connect(_on_reset_pressed)

@@ -19,6 +19,7 @@ const _C_GOLD_HOVER := Color(1, 0.92, 0.55)
 
 func _ready() -> void:
 	SafeArea.apply(self)
+	RenderingServer.set_default_clear_color(Color(0.07, 0.05, 0.09))
 	_back_button.pressed.connect(_on_back)
 	_king_button.pressed.connect(_on_king_pressed)
 	_render()

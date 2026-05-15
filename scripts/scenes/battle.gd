@@ -69,6 +69,11 @@ func _ready() -> void:
 	SafeArea.apply(self)
 	var level: LevelResource = GameState.get_current_level()
 	_bg.color = level.background_color
+	# Bleed the level's background colour into the safe-area bands above the
+	# notch / below the home indicator. SafeArea.apply() insets the root Control,
+	# so without this the OS-reserved strips show the boot-splash colour and
+	# leave visible seams.
+	RenderingServer.set_default_clear_color(level.background_color)
 	if level.background_path != "" and ResourceLoader.exists(level.background_path):
 		_bg_image.texture = load(level.background_path)
 		_bg_image.visible = true

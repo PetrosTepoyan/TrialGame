@@ -8,6 +8,7 @@ extends Control
 
 func _ready() -> void:
 	SafeArea.apply(self)
+	RenderingServer.set_default_clear_color(Color(0.07, 0.05, 0.09))
 	_retry.pressed.connect(_on_retry_pressed)
 	# "Quit to Menu" — return to the main menu rather than the chapter map.
 	_back.pressed.connect(_on_back_pressed)

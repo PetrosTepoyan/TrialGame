@@ -3,10 +3,10 @@ extends Node2D
 
 signal selected(piece: Piece)
 
-const SIZE: float = 96.0
+const SIZE: float = 180.0
 const SELECT_SCALE: float = 1.12
 const ANIM_TIME: float = 0.18
-const SPRITE_SCALE: float = 4.5  # Tiny Dungeon tiles are 16x16; scale to fit ~72x72 inside the SIZE tile.
+const SPRITE_SCALE: float = 8.5  # Tiny Dungeon tiles are 16x16; ~136x136 inside the 180 tile keeps the old ~75% inset ratio.
 
 const SPRITE_PATHS := {
 	PieceType.Kind.SWORD: "res://assets/pieces/sword.png",

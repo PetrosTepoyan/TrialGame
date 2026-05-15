@@ -17,11 +17,16 @@ func _ready() -> void:
 	layer = 100
 	process_mode = Node.PROCESS_MODE_ALWAYS
 
+	# Always-on for mobile testers: TestFlight builds use template_release, so
+	# the debug-build / template_debug gates don't hit. A `user://debug_disabled`
+	# kill-switch file lets us mute it later without re-shipping. Desktop stays
+	# debug-build-only so the editor doesn't catch the autoload on every play.
 	_enabled = (
 		OS.is_debug_build()
 		or OS.has_feature("template_debug")
+		or OS.has_feature("mobile")
 		or FileAccess.file_exists(DEBUG_ENABLED_PATH)
-	)
+	) and not FileAccess.file_exists("user://debug_disabled")
 	if not _enabled:
 		return
 
@@ -149,7 +154,8 @@ func _build_mini_hud() -> void:
 	add_child(_mini_hud)
 	if _mini_hud.has_method("set_overlay"):
 		_mini_hud.set_overlay(self)
-	set_mini_hud_visible(bool(get_override("hud.mini_visible", true)))
+	var hud_pref = get_override("hud.mini_visible", true)
+	set_mini_hud_visible(hud_pref == true or hud_pref == null)
 
 
 func _refresh_mini_hud() -> void:

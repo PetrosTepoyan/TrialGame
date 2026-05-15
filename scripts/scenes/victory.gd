@@ -7,6 +7,7 @@ extends Control
 
 func _ready() -> void:
 	SafeArea.apply(self)
+	RenderingServer.set_default_clear_color(Color(0.07, 0.05, 0.09))
 	_continue.pressed.connect(_on_continue_pressed)
 	_title.text = "Castle Conquered"
 	_detail.text = "%s falls. You ride to the next stronghold." % GameState.current_castle.castle_name
