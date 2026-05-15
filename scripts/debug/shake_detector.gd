@@ -6,10 +6,14 @@ extends Node
 
 signal shake_detected()
 
-const SHAKE_THRESHOLD: float = 2.5
+# Tuned for "deliberate shake," not "any motion." 2.5 m/s² above gravity
+# fired on a brisk wrist turn or a single tap. 7.0 needs a real shake. We also
+# now require 4 of 8 frames to spike, which means ~70 ms of sustained motion
+# — a single jolt no longer counts.
+const SHAKE_THRESHOLD: float = 7.0
 const WINDOW_SIZE: int = 8
-const SPIKES_REQUIRED: int = 2
-const COOLDOWN_SECONDS: float = 1.5
+const SPIKES_REQUIRED: int = 4
+const COOLDOWN_SECONDS: float = 2.0
 
 var _spike_history: Array[bool] = []
 var _last_trigger_time_msec: int = -100000
