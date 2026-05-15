@@ -10,7 +10,29 @@ const W: float = 110.0
 const H: float = 170.0
 const SPRITE_SCALE: float = 8.0  # Tiny Dungeon 16x16 -> 128x128
 
-var _shake_amount: float = 0.0
+# Idle bob — gentle up/down breathing motion when not in another anim.
+const IDLE_AMPLITUDE: float = 3.0
+const IDLE_PERIOD: float = 1.5
+
+# Attack — anticipation pull-back then forward lunge.
+const ATTACK_PULLBACK_PX: float = 5.0
+const ATTACK_LUNGE_PX: float = 30.0
+const ATTACK_LIFT_PX: float = 8.0
+const ATTACK_PULLBACK_TIME: float = 0.10
+const ATTACK_LUNGE_TIME: float = 0.08
+const ATTACK_SETTLE_TIME: float = 0.22
+
+# Hurt — knockback away from attacker + flash + wobble.
+const HURT_KNOCKBACK_PX: float = 26.0
+const HURT_KNOCKBACK_TIME: float = 0.08
+const HURT_RETURN_TIME: float = 0.22
+const HURT_WOBBLE_DEG: float = 8.0
+
+# Die — fall over and drift down.
+const DIE_FALL_DEG: float = 90.0
+const DIE_DRIFT_PX: float = 20.0
+const DIE_TIME: float = 0.65
+
 var _flash_white: float = 0.0
 var _tween: Tween
 var _idle_tween: Tween
@@ -18,21 +40,26 @@ var _sprite: Sprite2D = null
 var _has_sprite: bool = false
 var _base_position: Vector2 = Vector2.ZERO
 var _is_busy: bool = false
+var _is_dead: bool = false
 
 func _ready() -> void:
 	_sync_sprite()
 	_base_position = position
-	_start_idle()
+	idle_bob()
 	queue_redraw()
 
-func _start_idle() -> void:
+# Continuous subtle up/down idle motion. Starts on _ready and resumes after
+# attack/hurt finish via _resume_idle.
+func idle_bob() -> void:
+	if _is_busy or _is_dead:
+		return
 	if _idle_tween != null and _idle_tween.is_running():
 		_idle_tween.kill()
 	_idle_tween = create_tween().set_loops()
-	var up := _base_position + Vector2(0, -4)
-	var down := _base_position + Vector2(0, 0)
-	_idle_tween.tween_property(self, "position", up, 0.9).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
-	_idle_tween.tween_property(self, "position", down, 0.9).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	var half: float = IDLE_PERIOD * 0.5
+	var up: Vector2 = _base_position + Vector2(0, -IDLE_AMPLITUDE)
+	_idle_tween.tween_property(self, "position", up, half).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	_idle_tween.tween_property(self, "position", _base_position, half).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 
 func _stop_idle() -> void:
 	if _idle_tween != null and _idle_tween.is_running():
@@ -65,35 +92,58 @@ func _sync_sprite() -> void:
 	add_child(_sprite)
 	_has_sprite = true
 
+# Attack: small anticipation backward → forward lunge → settle home.
 func attack() -> void:
-	_kill()
+	if _is_dead:
+		return
+	_kill_tween()
 	_stop_idle()
 	_is_busy = true
 	var dir: float = 1.0 if is_player else -1.0
+	var pull_back: Vector2 = _base_position + Vector2(-dir * ATTACK_PULLBACK_PX, 0)
+	var lunge: Vector2 = _base_position + Vector2(dir * ATTACK_LUNGE_PX, -ATTACK_LIFT_PX)
 	_tween = create_tween()
-	_tween.tween_property(self, "position", _base_position + Vector2(dir * 36, -10), 0.10).set_trans(Tween.TRANS_QUAD)
-	_tween.tween_property(self, "position", _base_position, 0.18).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	# Anticipation — drift slightly away from target.
+	_tween.tween_property(self, "position", pull_back, ATTACK_PULLBACK_TIME).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	# Lunge — snap forward with TRANS_BACK for crunchy overshoot.
+	_tween.tween_property(self, "position", lunge, ATTACK_LUNGE_TIME).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	# Settle — ease back home with a small bounce.
+	_tween.tween_property(self, "position", _base_position, ATTACK_SETTLE_TIME).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	_tween.tween_callback(_resume_idle)
 
+# Hurt: knockback away from attacker, red flash, small angular wobble.
 func hurt() -> void:
+	if _is_dead:
+		return
+	_kill_tween()
 	_stop_idle()
 	_is_busy = true
 	_flash_white = 1.0
-	if _sprite != null:
-		_sprite.modulate = Color(1.0, 0.4, 0.4)
-	queue_redraw()
-	var t := create_tween()
-	t.tween_method(_set_flash, 1.0, 0.0, 0.30)
-	var shake := create_tween()
-	for i in range(8):
-		shake.tween_property(self, "position", _base_position + Vector2(randf_range(-8.0, 8.0), randf_range(-6.0, 6.0)), 0.035)
-	shake.tween_property(self, "position", _base_position, 0.08)
-	shake.tween_callback(_resume_idle)
+	# Knockback direction: away from the opposing actor.
+	var dir: float = -1.0 if is_player else 1.0
+	var knock_to: Vector2 = _base_position + Vector2(dir * HURT_KNOCKBACK_PX, -4.0)
+	# Position knockback and return.
+	_tween = create_tween()
+	_tween.tween_property(self, "position", knock_to, HURT_KNOCKBACK_TIME).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	_tween.tween_property(self, "position", _base_position, HURT_RETURN_TIME).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	_tween.tween_callback(_resume_idle)
+	# Flash fade.
+	var flash := create_tween()
+	flash.tween_method(_set_flash, 1.0, 0.0, 0.32)
+	# Wobble — quick rotation flicker that ends at 0.
+	var wob := create_tween()
+	var wob_dir: float = 1.0 if (randi() & 1) == 0 else -1.0
+	wob.tween_property(self, "rotation_degrees", wob_dir * HURT_WOBBLE_DEG, 0.05).set_trans(Tween.TRANS_SINE)
+	wob.tween_property(self, "rotation_degrees", -wob_dir * (HURT_WOBBLE_DEG * 0.5), 0.07).set_trans(Tween.TRANS_SINE)
+	wob.tween_property(self, "rotation_degrees", 0.0, 0.10).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
 
 func _resume_idle() -> void:
+	if _is_dead:
+		return
 	_is_busy = false
 	position = _base_position
-	_start_idle()
+	rotation_degrees = 0.0
+	idle_bob()
 
 func _set_flash(v: float) -> void:
 	_flash_white = v
@@ -101,13 +151,20 @@ func _set_flash(v: float) -> void:
 		_sprite.modulate = Color(1, 1, 1).lerp(Color(1.0, 0.4, 0.4), v * 0.7)
 	queue_redraw()
 
+# Die: rotate sideways, fade alpha, slight downward drift.
 func die() -> void:
+	_kill_tween()
 	_stop_idle()
+	_is_busy = true
+	_is_dead = true
+	var fall_dir: float = -1.0 if is_player else 1.0
 	var t := create_tween()
-	t.tween_property(self, "modulate:a", 0.0, 0.6)
-	t.parallel().tween_property(self, "rotation_degrees", -85.0 if is_player else 85.0, 0.6)
+	t.set_parallel(true)
+	t.tween_property(self, "modulate:a", 0.0, DIE_TIME).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN)
+	t.tween_property(self, "rotation_degrees", fall_dir * DIE_FALL_DEG, DIE_TIME).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_IN)
+	t.tween_property(self, "position", _base_position + Vector2(0, DIE_DRIFT_PX), DIE_TIME).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
 
-func _kill() -> void:
+func _kill_tween() -> void:
 	if _tween != null and _tween.is_running():
 		_tween.kill()
 
