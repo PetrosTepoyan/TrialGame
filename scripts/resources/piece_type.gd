@@ -8,10 +8,19 @@ extends Resource
 #   match-5+ -> Level 3
 # A match emits an Emblem(kind, level) onto the action scale. When the scale is
 # full (5 emblems) the round resolves and emblems apply their effects.
-enum Kind { SWORD, SHIELD, STAFF, BOW }
+#
+# RAINBOW is a special 5th kind that is never placed at startup/shuffle. It only
+# spawns occasionally during refill (see Board.SPECIAL_RAINBOW_CHANCE). When it
+# participates in a match it counts as the matched kind AND pulls in every other
+# tile of that kind on the board, awarding a fat L3 combo.
+enum Kind { SWORD, SHIELD, STAFF, BOW, RAINBOW }
 
-const KIND_COUNT: int = 4
-const SPAWNABLE_KIND_COUNT: int = 4  # all kinds are spawnable; no power-up tiles
+const KIND_COUNT: int = 5
+const SPAWNABLE_KIND_COUNT: int = 4  # only the 4 army kinds are randomly spawned by default
+const SPECIAL_RAINBOW_CHANCE: float = 0.02  # 2% of refilled tiles are rainbow
+
+static func is_special(k: int) -> bool:
+	return k == Kind.RAINBOW
 
 @export var kind: int = Kind.SWORD
 @export var display_name: String = "Sword"
@@ -41,6 +50,7 @@ static func kind_to_string(k: int) -> String:
 		Kind.SHIELD: return "Shield"
 		Kind.STAFF: return "Staff"
 		Kind.BOW: return "Bow"
+		Kind.RAINBOW: return "Rainbow"
 	return "Unknown"
 
 static func level_from_match(longest_run: int) -> int:

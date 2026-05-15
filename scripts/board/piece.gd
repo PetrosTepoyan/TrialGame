@@ -23,10 +23,22 @@ var is_selected: bool = false
 var _tween: Tween
 var _sprite: Sprite2D = null
 var _has_sprite: bool = false
+var _rainbow_rotation: float = 0.0      # accumulator for the rainbow swirl tween
+var _rainbow_tween: Tween = null
+
+const RAINBOW_SLICE_COLORS: Array[Color] = [
+	Color(0.95, 0.30, 0.30),
+	Color(0.96, 0.62, 0.25),
+	Color(0.95, 0.85, 0.30),
+	Color(0.40, 0.85, 0.45),
+	Color(0.35, 0.60, 0.95),
+	Color(0.75, 0.40, 0.95),
+]
 
 func _ready() -> void:
 	z_index = 5
 	_sync_sprite()
+	_sync_rainbow_spin()
 
 func configure(p_kind: int, p_color: Color, p_board_pos: Vector2i) -> void:
 	kind = p_kind
@@ -34,6 +46,24 @@ func configure(p_kind: int, p_color: Color, p_board_pos: Vector2i) -> void:
 	board_pos = p_board_pos
 	if is_inside_tree():
 		_sync_sprite()
+		_sync_rainbow_spin()
+	queue_redraw()
+
+func _sync_rainbow_spin() -> void:
+	# Run a perpetual slow rotation accumulator for the rainbow swirl. Only
+	# rainbow pieces get the tween; everyone else clears it.
+	if _rainbow_tween != null and _rainbow_tween.is_running():
+		_rainbow_tween.kill()
+	_rainbow_tween = null
+	if kind != PieceType.Kind.RAINBOW:
+		return
+	_rainbow_rotation = 0.0
+	_rainbow_tween = create_tween()
+	_rainbow_tween.set_loops()
+	_rainbow_tween.tween_method(_set_rainbow_rotation, 0.0, TAU, 4.0)
+
+func _set_rainbow_rotation(v: float) -> void:
+	_rainbow_rotation = v
 	queue_redraw()
 
 func _sync_sprite() -> void:
@@ -84,14 +114,44 @@ func _draw() -> void:
 	var rect := Rect2(-half, -half, SIZE, SIZE)
 	# Tile background
 	draw_rect(rect, Color(0.16, 0.13, 0.20), true)
-	# Colored inset (band that gives each kind its identifying tint behind the sprite)
-	draw_rect(rect.grow(-6), color.darkened(0.35), true)
+	if kind == PieceType.Kind.RAINBOW:
+		_draw_rainbow_face(rect)
+	else:
+		# Colored inset (band that gives each kind its identifying tint behind the sprite)
+		draw_rect(rect.grow(-6), color.darkened(0.35), true)
 	# Border
 	var border := Color(1, 0.95, 0.5, 0.95) if is_selected else Color(1, 1, 1, 0.18)
+	if kind == PieceType.Kind.RAINBOW and not is_selected:
+		# Faint rainbow halo border so it reads as special at a glance.
+		border = Color(1.0, 1.0, 1.0, 0.75)
 	draw_rect(rect.grow(-1), border, false, 3.0)
 	# Programmatic icon only when we don't have a sprite swapped in.
-	if not _has_sprite:
+	if not _has_sprite and kind != PieceType.Kind.RAINBOW:
 		_draw_kind_icon()
+
+func _draw_rainbow_face(rect: Rect2) -> void:
+	# Pie-slice radial gradient using a fan of triangles; rotates via _rainbow_rotation.
+	var center: Vector2 = Vector2.ZERO
+	var radius: float = (SIZE * 0.5) - 6.0
+	var slices: int = RAINBOW_SLICE_COLORS.size()
+	var step: float = TAU / float(slices)
+	for i in range(slices):
+		var a0: float = _rainbow_rotation + step * i
+		var a1: float = a0 + step
+		# Subdivide each slice into a few triangles for a smoother arc edge.
+		var sub: int = 4
+		for s in range(sub):
+			var b0: float = lerp(a0, a1, float(s) / sub)
+			var b1: float = lerp(a0, a1, float(s + 1) / sub)
+			var poly := PackedVector2Array([
+				center,
+				center + Vector2(cos(b0), sin(b0)) * radius,
+				center + Vector2(cos(b1), sin(b1)) * radius,
+			])
+			draw_colored_polygon(poly, RAINBOW_SLICE_COLORS[i])
+	# Centre highlight so it pops against the dark backdrop.
+	draw_circle(center, radius * 0.32, Color(1.0, 1.0, 1.0, 0.55))
+	draw_circle(center, radius * 0.18, Color(1.0, 1.0, 1.0, 0.85))
 
 func _draw_kind_icon() -> void:
 	var r: float = SIZE * 0.28

@@ -7,6 +7,32 @@ extends Object
 
 const CHAPTER_THEMES := ["forest", "wall", "keep"]
 
+# --- Difficulty curve ---
+#
+# Per-chapter level pacing: 5 regular skirmishes + tower boss. The intent:
+#   - Levels 1-2: approachable warmups. Low HP, weak damage.
+#   - Levels 3-4: challenging. HP bumps, damage bumps.
+#   - Level 5: climactic — last fight before the tower. Real teeth.
+#   - Tower boss: a wall, but beatable.
+#   - King: a true wall — heavy HP, heavy armor, plate damage.
+#
+# Curves are expressed as per-level multipliers applied on top of the chapter
+# baseline. Editing these tables tunes the game; the generator's API shape
+# (LevelResource fields) is unchanged.
+#
+# Index = lvl_idx (0..4). lvl_idx 0 is the FIRST level of the chapter.
+const LEVEL_HP_CURVE: Array[float] = [0.85, 1.00, 1.30, 1.55, 1.90]
+const LEVEL_DMG_CURVE: Array[float] = [0.85, 1.00, 1.20, 1.45, 1.70]
+# Chapter baseline HP/dmg before per-level curve. Chapter 0 is the gentlest.
+const CHAPTER_BASE_HP: Array[float] = [55.0, 95.0, 145.0]
+const CHAPTER_BASE_DMG: Array[float] = [5.0, 8.5, 11.5]
+# Tower boss: per-chapter HP/dmg. Tuned to feel climactic without being a brick.
+const TOWER_HP_BY_CHAPTER: Array[float] = [220.0, 360.0, 520.0]
+const TOWER_DMG_BY_CHAPTER: Array[float] = [11.0, 14.0, 18.0]
+# King: the wall.
+const KING_HP: float = 620.0
+const KING_DMG: float = 17.0
+
 const CHAPTER_NAMES := [
 	["The Outer Wood", "The Black Pines", "The Hunting Wood", "The Thornwood"],
 	["The Curtain Wall", "The Gatehouse", "The Bailey", "The Battlements"],
@@ -116,21 +142,27 @@ static func generate(castle_index: int) -> CastleResource:
 			lvl.background_path = _background_path_for_chapter(ch_idx)
 			lvl.enemy_name = _enemy_name_for_chapter(ch_idx, rng)
 			lvl.enemy_sprite_path = _regular_enemy_sprite_for_chapter(ch_idx)
-			var base_hp: float = 50.0 + ch_idx * 30.0 + lvl_idx * 12.0
-			var base_dmg: float = 5.0 + ch_idx * 3.0 + lvl_idx * 1.0
-			lvl.enemy_max_hp = int(base_hp * castle.difficulty_multiplier)
-			lvl.enemy_damage = int(base_dmg * castle.difficulty_multiplier)
+			# Curve-driven HP/dmg. The per-level multiplier table ramps gently
+			# for the first two levels then accelerates into level 5.
+			var chapter_base_hp: float = CHAPTER_BASE_HP[clampi(ch_idx, 0, CHAPTER_BASE_HP.size() - 1)]
+			var chapter_base_dmg: float = CHAPTER_BASE_DMG[clampi(ch_idx, 0, CHAPTER_BASE_DMG.size() - 1)]
+			var hp_mult: float = LEVEL_HP_CURVE[clampi(lvl_idx, 0, LEVEL_HP_CURVE.size() - 1)]
+			var dmg_mult: float = LEVEL_DMG_CURVE[clampi(lvl_idx, 0, LEVEL_DMG_CURVE.size() - 1)]
+			lvl.enemy_max_hp = int(chapter_base_hp * hp_mult * castle.difficulty_multiplier)
+			lvl.enemy_damage = int(chapter_base_dmg * dmg_mult * castle.difficulty_multiplier)
 			lvl.enemy_attack_interval = 1
 			lvl.is_boss = false
 			ch.levels.append(lvl)
-		# Boss level
+		# Tower boss — climactic chapter finale.
 		var boss := LevelResource.new()
 		boss.level_name = "%s — %s" % [TOWER_NAMES[ch_idx], TOWER_BOSS_TITLES[ch_idx]]
 		boss.background_color = _background_for_theme(ch.theme, rng).darkened(0.25)
 		boss.background_path = _background_path_for_chapter(ch_idx)
 		boss.enemy_name = TOWER_BOSS_TITLES[ch_idx]
-		boss.enemy_max_hp = int((180.0 + ch_idx * 80.0) * castle.difficulty_multiplier)
-		boss.enemy_damage = int((10.0 + ch_idx * 3.0) * castle.difficulty_multiplier)
+		var tower_hp: float = TOWER_HP_BY_CHAPTER[clampi(ch_idx, 0, TOWER_HP_BY_CHAPTER.size() - 1)]
+		var tower_dmg: float = TOWER_DMG_BY_CHAPTER[clampi(ch_idx, 0, TOWER_DMG_BY_CHAPTER.size() - 1)]
+		boss.enemy_max_hp = int(tower_hp * castle.difficulty_multiplier)
+		boss.enemy_damage = int(tower_dmg * castle.difficulty_multiplier)
 		boss.enemy_attack_interval = 1
 		boss.is_boss = true
 		boss.boss_modifier = _make_boss_modifier(ch_idx, castle.difficulty_multiplier)
@@ -146,8 +178,9 @@ static func generate(castle_index: int) -> CastleResource:
 	king.level_name = "%s, %s" % [king_name, king_epithet]
 	king.background_color = Color(0.15, 0.08, 0.18)
 	king.enemy_name = king_name
-	king.enemy_max_hp = int(450.0 * castle.difficulty_multiplier)
-	king.enemy_damage = int(14.0 * castle.difficulty_multiplier)
+	# King is the wall: heavier than any tower boss and visibly meatier.
+	king.enemy_max_hp = int(KING_HP * castle.difficulty_multiplier)
+	king.enemy_damage = int(KING_DMG * castle.difficulty_multiplier)
 	king.enemy_attack_interval = 1
 	king.is_boss = true
 	king.is_king = true

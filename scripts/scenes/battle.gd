@@ -69,6 +69,8 @@ func _ready() -> void:
 	_combat.battle_lost.connect(_on_battle_lost)
 	_combat.enemy_stunned_skipped.connect(_on_enemy_stunned)
 	_combat.round_finished.connect(_on_round_finished_count)
+	# Almost-dead: when the player drops below 25% HP, pulse the HP bar red.
+	_player_actor.low_hp.connect(_on_player_low_hp)
 	_pause_button.pressed.connect(_on_pause)
 	_exit_button.pressed.connect(_on_exit_pressed)
 	_shield_armor_btn.pressed.connect(_on_shield_armor_chosen)
@@ -217,6 +219,17 @@ func _spawn_float_text(at: Vector2, text: String, color: Color, magnitude: int) 
 	drift.tween_property(lbl, "position", at + Vector2(0, -90), 0.9).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 	drift.tween_property(lbl, "modulate:a", 0.0, 0.9)
 	drift.chain().tween_callback(lbl.queue_free)
+
+func _on_player_low_hp(_actor: CombatActor) -> void:
+	# Additive: tween the existing HP bar's modulate between full white and red
+	# rapidly so the player notices they're nearly dead. We don't touch the bar's
+	# internal fill/colour — just modulate at the Control level.
+	if _player_hp == null:
+		return
+	var t := create_tween()
+	t.set_loops(6)
+	t.tween_property(_player_hp, "modulate", Color(1.0, 0.35, 0.35, 1.0), 0.18).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	t.tween_property(_player_hp, "modulate", Color(1.0, 1.0, 1.0, 1.0), 0.18).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 
 func _screen_shake(intensity: float, duration: float) -> void:
 	# Shake the Battle root by jittering its position briefly.
