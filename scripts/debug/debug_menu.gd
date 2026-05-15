@@ -160,15 +160,14 @@ func _build_combat_tab() -> ScrollContainer:
 	var scroll := _make_tab("Combat")
 	var vbox := _tab_content(scroll)
 
-	vbox.add_child(_section_header("Tunables"))
+	vbox.add_child(_section_header("Live (applies mid-battle)"))
+	# CombatController re-reads these on every enemy tick.
+	_add_spin_row(vbox, "Enemy tick (s)", "combat.enemy_tick_seconds", 2.0, 0.2, 10.0, 0.1)
+	_add_spin_row(vbox, "Enemy damage", "combat.enemy_damage", 6, 0, 999, 1)
 
-	_add_spin_row(vbox, "Match-3 damage", "combat.damage_match3", 4, 0, 999, 1)
-	_add_spin_row(vbox, "Match-4 damage", "combat.damage_match4", 8, 0, 999, 1)
-	_add_spin_row(vbox, "Match-5 damage", "combat.damage_match5", 16, 0, 999, 1)
-	_add_spin_row(vbox, "Cascade bonus mult", "combat.cascade_mult", 1.0, 0.0, 5.0, 0.1)
-	_add_spin_row(vbox, "Player max HP", "combat.player_max_hp", 30, 1, 9999, 1)
-	_add_spin_row(vbox, "Enemy max HP", "combat.enemy_max_hp", 30, 1, 9999, 1)
-	_add_spin_row(vbox, "Enemy action scale size", "combat.enemy_scale_size", 5, 1, 20, 1)
+	vbox.add_child(_section_header("Stored (next battle)"))
+	_add_spin_row(vbox, "Player max HP", "combat.player_max_hp", 100, 1, 9999, 1)
+	_add_spin_row(vbox, "Enemy max HP", "combat.enemy_max_hp", 60, 1, 9999, 1)
 
 	vbox.add_child(_section_header("Quick Actions"))
 

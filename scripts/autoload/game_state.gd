@@ -16,6 +16,12 @@ var level_stars: Dictionary = {}  # "c.ch.l" -> stars (1..3)
 var player_max_hp: int = 100
 var current_castle: CastleResource = null
 var tutorial_seen: bool = false
+var music_enabled: bool = true
+var sfx_enabled: bool = true
+
+# Transient — set by battle.gd right before goto_victory so the victory
+# scene can show level-specific copy. Not persisted.
+var last_battle_result: Dictionary = {}
 
 func _ready() -> void:
 	load_game()
@@ -119,6 +125,8 @@ func save_game() -> void:
 		"completed_levels": completed_levels,
 		"level_stars": level_stars,
 		"tutorial_seen": tutorial_seen,
+		"music_enabled": music_enabled,
+		"sfx_enabled": sfx_enabled,
 	}
 	var f := FileAccess.open(SAVE_TMP, FileAccess.WRITE)
 	if f == null:
@@ -155,6 +163,8 @@ func load_game() -> void:
 	completed_levels = data.get("completed_levels", {})
 	level_stars = data.get("level_stars", {})
 	tutorial_seen = bool(data.get("tutorial_seen", false))
+	music_enabled = bool(data.get("music_enabled", true))
+	sfx_enabled = bool(data.get("sfx_enabled", true))
 	emit_signal("save_loaded")
 
 func reset_save() -> void:

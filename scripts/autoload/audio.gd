@@ -63,6 +63,10 @@ var sfx_status: Array[AudioStream] = []  # indexed by StatusEffect.Kind ordinal
 var _duck_tween: Tween = null
 
 func _ready() -> void:
+	# Hydrate persisted toggles from GameState before we adjust any player
+	# volumes. GameState is the first autoload, so it's already _ready by now.
+	_music_enabled = GameState.music_enabled
+	_sfx_enabled = GameState.sfx_enabled
 	add_child(_music)
 	_music.volume_db = _music_target_db()
 	for i in range(SFX_PLAYER_COUNT):
@@ -280,12 +284,16 @@ func set_music_enabled(value: bool) -> void:
 		_music.stop()
 	elif value and _music.stream != null and not _music.playing:
 		_music.play()
+	GameState.music_enabled = value
+	GameState.save_game()
 
 func set_sfx_enabled(value: bool) -> void:
 	_sfx_enabled = value
 	var db: float = _sfx_target_db()
 	for p in _sfx_players:
 		p.volume_db = db
+	GameState.sfx_enabled = value
+	GameState.save_game()
 
 func set_sfx_volume(value: float) -> void:
 	# 0..1 multiplier on top of the on/off boolean — at value=0 we drive down

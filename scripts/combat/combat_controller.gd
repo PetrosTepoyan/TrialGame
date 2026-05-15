@@ -29,16 +29,12 @@ signal enemy_stunned_skipped
 enum State { PLAYER_INPUT, RESOLVING, ENDED }
 
 const SCALE_CAPACITY: int = 5
-const ENEMY_TICK_SECONDS: float = 1.0
+# Enemy gains one emblem per tick. At 5-capacity that's a full scale every
+# 2.0 * 5 = 10 s minimum (modulated by combo rolls). Lower => harder.
+# Tweakable live from the debug menu via the `combat.enemy_tick_seconds`
+# override; player feedback wanted slower default bots.
+const ENEMY_TICK_SECONDS: float = 2.0
 const ENEMY_SIM_BOARD_SIZE: int = 5
-
-# Cascade-depth threshold past which the player earns bonus emblems queued to
-# overflow. Each step of cascade_depth above the threshold contributes one
-# bonus emblem at one level higher than the deepest match this cascade (capped
-# at level 3, the in-game maximum).
-const CHAIN_BONUS_MIN_DEPTH: int = 2
-const CHAIN_BONUS_MAX_EXTRAS: int = 3
-const RAINBOW_EMBLEM_LEVEL: int = 3
 
 @export var board_path: NodePath
 @export var player_actor_path: NodePath
@@ -51,17 +47,11 @@ const RAINBOW_EMBLEM_LEVEL: int = 3
 
 var state: int = State.PLAYER_INPUT
 var action_scale: Array = []            # Array[Emblem]
-var _overflow_emblems: Array = []       # Emblems collected while a round is mid-execution
 var _player_round_count: int = 0
 var _enemy_round_count: int = 0
 var _pending_shield_choice: int = -1
 var _player_round_in_flight: bool = false
 var _enemy_round_in_flight: bool = false
-# Track the highest emblem level resolved during the current cascade so the
-# chain bonus can award an emblem one level higher (capped at 3).
-var _cascade_top_level: int = 0
-# Per-cascade tally of emblem kinds, used to pick the bonus kind for chain emblems.
-var _cascade_kind_counts: Dictionary = {}
 
 var enemy_action_scale: Array = []      # Array[Emblem]
 var _enemy_tick_timer: Timer = null
@@ -86,6 +76,26 @@ func _ready() -> void:
 	add_child(_enemy_tick_timer)
 	_enemy_tick_timer.timeout.connect(_on_enemy_tick)
 	_enemy_tick_timer.start()
+	# Pick up any persisted debug overrides for tick speed / enemy damage so a
+	# tester's tuning carries from one battle into the next.
+	_apply_debug_overrides()
+
+func _apply_debug_overrides() -> void:
+	# Read the live debug overrides each enemy tick so a tester moving the
+	# spinbox while combat is running sees the change without restarting.
+	var dbg: Node = get_node_or_null("/root/DebugOverlay")
+	if dbg == null or not dbg.has_method("get_override"):
+		return
+	var tick_v: Variant = dbg.call("get_override", "combat.enemy_tick_seconds", null)
+	if tick_v != null and _enemy_tick_timer != null:
+		var tick_f: float = float(tick_v)
+		if tick_f > 0.0 and abs(_enemy_tick_timer.wait_time - tick_f) > 0.001:
+			_enemy_tick_timer.wait_time = tick_f
+	var dmg_v: Variant = dbg.call("get_override", "combat.enemy_damage", null)
+	if dmg_v != null and enemy != null:
+		var dmg_i: int = int(dmg_v)
+		if dmg_i >= 0 and enemy.base_damage != dmg_i:
+			enemy.base_damage = dmg_i
 
 func _apply_level_stats() -> void:
 	player.is_player = true
@@ -98,64 +108,35 @@ func _apply_level_stats() -> void:
 		enemy_armor = level.boss_modifier.armor
 	enemy.setup(level.enemy_max_hp, level.enemy_damage, enemy_armor)
 
-func _on_match_resolved(kind: int, _count: int, longest_run: int, from_rainbow: bool = false) -> void:
-	# Each match yields one Emblem. Sword damage / etc. is now decided at round
-	# execution time, not per-match.
+func _on_match_resolved(kind: int, _count: int, longest_run: int, _from_rainbow: bool = false) -> void:
+	# Each match yields one Emblem; sword damage / etc. is decided at round
+	# execution time, not per-match. Rainbow piece is disabled in the board
+	# config — the from_rainbow arg stays for backwards compatibility but is
+	# ignored.
 	if state == State.ENDED:
 		return
 	var lvl: int = PieceType.level_from_match(longest_run)
-	# Any match that swept in a rainbow tile is treated as a max-level emblem,
-	# regardless of axis-run length.
-	if from_rainbow:
-		lvl = RAINBOW_EMBLEM_LEVEL
-	if lvl > _cascade_top_level:
-		_cascade_top_level = lvl
-	_cascade_kind_counts[kind] = int(_cascade_kind_counts.get(kind, 0)) + 1
 	var e := Emblem.new(kind, lvl)
 	_enqueue_emblem(e)
 
 func _enqueue_emblem(e: Emblem) -> void:
+	# Drop emblems past the 5-slot cap. Players asked for the old behaviour
+	# where the scale clears on round execute and they refill from zero —
+	# carry-over from a cascade made it feel like the next round was already
+	# half-spent.
 	if action_scale.size() >= SCALE_CAPACITY:
-		_overflow_emblems.append(e)
-	else:
-		action_scale.append(e)
-		emit_signal("emblem_added", e, action_scale.size())
+		return
+	action_scale.append(e)
+	emit_signal("emblem_added", e, action_scale.size())
 
 func _on_cascade_finished(_total: int, _depth: int) -> void:
 	if state == State.ENDED:
-		_cascade_top_level = 0
-		_cascade_kind_counts.clear()
 		return
-	# --- Chain bonus ---
-	# When a single swap fires deeper than CHAIN_BONUS_MIN_DEPTH match-resolve
-	# cycles, reward the player with bonus emblems queued into the overflow.
-	# Bonus emblems sit one level above the cascade's top-resolved level (capped
-	# at 3) and are kinded by whichever piece was matched most this cascade.
-	if _cascade_top_level > 0 and _depth >= CHAIN_BONUS_MIN_DEPTH:
-		var extras: int = min(_depth - CHAIN_BONUS_MIN_DEPTH + 1, CHAIN_BONUS_MAX_EXTRAS)
-		var bonus_level: int = min(_cascade_top_level + 1, 3)
-		var bonus_kind: int = _pick_bonus_kind()
-		for i in range(extras):
-			_overflow_emblems.append(Emblem.new(bonus_kind, bonus_level))
-	_cascade_top_level = 0
-	_cascade_kind_counts.clear()
 	if action_scale.size() >= SCALE_CAPACITY:
 		_execute_round()
 	else:
 		# Cascade resolved without filling the scale — back to player input.
 		_recheck_player_input()
-
-func _pick_bonus_kind() -> int:
-	# Most-matched kind this cascade wins the chain bonus.
-	var best_kind: int = PieceType.Kind.SWORD
-	var best_count: int = -1
-	for k_v in _cascade_kind_counts.keys():
-		var k: int = int(k_v)
-		var c: int = int(_cascade_kind_counts[k_v])
-		if c > best_count:
-			best_count = c
-			best_kind = k
-	return best_kind
 
 func _on_invalid_swap() -> void:
 	pass
@@ -196,9 +177,8 @@ func _execute_round() -> void:
 	if state == State.ENDED:
 		_player_round_in_flight = false
 		return
-	# Reset scale, accept any overflow emblems collected mid-round.
-	action_scale = _overflow_emblems
-	_overflow_emblems = []
+	# Reset scale fully — no carry-over. Player must collect 5 fresh emblems.
+	action_scale = []
 	_player_round_count += 1
 	emit_signal("round_finished")
 	_player_round_in_flight = false
@@ -309,6 +289,8 @@ func _recheck_player_input() -> void:
 # --- Enemy independent action-scale loop ---
 
 func _on_enemy_tick() -> void:
+	# Re-read live debug overrides each tick — tuning needs to apply mid-battle.
+	_apply_debug_overrides()
 	if state == State.ENDED:
 		return
 	# Stunned enemy doesn't accumulate emblems; the stun still ticks down each

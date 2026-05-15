@@ -307,14 +307,28 @@ func _on_battle_won() -> void:
 	await get_tree().create_timer(0.4).timeout
 	Engine.time_scale = 1.0
 	await get_tree().create_timer(0.3).timeout
-	if GameState.is_current_level_king():
+	# Stash the result so the victory scene can show level-specific copy. Done
+	# BEFORE advance_to_next_castle() so we capture the *conquered* castle name
+	# rather than the freshly-rolled successor.
+	var level: LevelResource = GameState.get_current_level()
+	var stars: int = _award_stars()
+	var is_king: bool = GameState.is_current_level_king()
+	GameState.last_battle_result = {
+		"is_king": is_king,
+		"level_name": level.level_name if level != null else "",
+		"enemy_name": level.enemy_name if level != null else "",
+		"castle_name": GameState.current_castle.castle_name if GameState.current_castle != null else "",
+		"stars": stars,
+		"rounds": _rounds_taken,
+		"hp_remaining": _player_actor.current_hp,
+		"hp_max": _player_actor.max_hp,
+	}
+	if is_king:
 		GameState.advance_to_next_castle()
-		SceneRouter.goto_victory()
 	else:
-		var stars: int = _award_stars()
 		GameState.mark_level_completed(GameState.castle_index, GameState.chapter_index, GameState.level_index)
 		GameState.mark_level_stars(GameState.castle_index, GameState.chapter_index, GameState.level_index, stars)
-		SceneRouter.goto_chapter_map()
+	SceneRouter.goto_victory()
 
 func _on_battle_lost() -> void:
 	AudioBus.play_defeat_sting()

@@ -15,14 +15,15 @@ const COLS := 5
 const CELL: float = Piece.SIZE
 const SPACING: float = 4.0
 const MAX_CASCADE_DEPTH := 20
-const DIAGONAL_MIN_LENGTH := 4  # set to 4 to dial down match frequency
+# 99 effectively disables diagonal matches on this 5x5 board — players found
+# diagonal-4 matches confusing and unintentional. Horizontal/vertical only.
+const DIAGONAL_MIN_LENGTH := 99
 
 # --- Tunable mechanics ---
-# Probability (0..1) that a freshly-refilled tile is the Rainbow special instead
-# of a normal kind. Rainbows are never placed during startup or shuffle. Keep in
-# sync with PieceType.SPECIAL_RAINBOW_CHANCE; we duplicate the literal because
-# GDScript const initializers can't reference another script's class constants.
-const SPECIAL_RAINBOW_CHANCE: float = 0.02
+# Rainbow tile removed per player feedback ("strange multi-colored icons with
+# unclear effect"). Setting the chance to 0 keeps the merge-friendly plumbing
+# in place but makes them never spawn.
+const SPECIAL_RAINBOW_CHANCE: float = 0.0
 
 # Weighted spawn distribution for the four army kinds. Index matches Kind enum
 # (SWORD, SHIELD, STAFF, BOW). Sword is slightly favoured because most players
