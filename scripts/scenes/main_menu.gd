@@ -34,6 +34,13 @@ func _ready() -> void:
 	_flavor.text = FLAVOR_LINES[_flavor_index]
 	_flavor.modulate.a = 0.0
 
+	# Subtle bounce on hover / press — applied via tween so each button feels
+	# tactile without per-button shader work (iOS GL Compatibility-safe).
+	_wire_bounce(_play_button)
+	_wire_bounce(_settings_button)
+	_wire_bounce(_reset_button)
+	_wire_bounce(_quit_button)
+
 	_start_title_pulse()
 	_start_torch_flicker()
 	_start_flavor_rotation()
@@ -104,3 +111,18 @@ func _on_settings_pressed() -> void:
 	Haptics.light_tap()
 	_settings_panel.visible = true
 	AudioBus.play_panel_open()
+
+func _wire_bounce(btn: Button) -> void:
+	# Tween scale on enter/exit/down/up — gives the button a "press" feel.
+	btn.pivot_offset = btn.size * 0.5
+	btn.resized.connect(func() -> void: btn.pivot_offset = btn.size * 0.5)
+	btn.mouse_entered.connect(func() -> void: _tween_scale(btn, Vector2(1.03, 1.03), 0.12))
+	btn.mouse_exited.connect(func() -> void: _tween_scale(btn, Vector2(1.0, 1.0), 0.18))
+	btn.button_down.connect(func() -> void: _tween_scale(btn, Vector2(0.96, 0.96), 0.06))
+	btn.button_up.connect(func() -> void: _tween_scale(btn, Vector2(1.0, 1.0), 0.14))
+
+func _tween_scale(btn: Button, target: Vector2, duration: float) -> void:
+	if not is_instance_valid(btn):
+		return
+	var t := create_tween()
+	t.tween_property(btn, "scale", target, duration).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
