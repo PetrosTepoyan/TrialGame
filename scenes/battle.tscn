@@ -293,6 +293,7 @@ enemy_actor_path = NodePath("../Actors/EnemyActor")
 
 [node name="ShieldChoicePopup" type="PanelContainer" parent="."]
 visible = false
+z_index = 100
 anchor_left = 0.5
 anchor_top = 0.5
 anchor_right = 0.5

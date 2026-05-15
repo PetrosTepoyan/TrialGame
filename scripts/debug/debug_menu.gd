@@ -3,6 +3,16 @@ extends Control
 ## Debug menu UI built programmatically at runtime (no .tscn editing needed
 ## beyond the wrapper scene).
 
+# All widgets render against a 1080x1920 viewport; default Godot font sizes
+# are unreadable at that scale on a phone. Sizes below are tuned for thumb
+# tapping on a real device.
+const FONT_BODY: int = 30
+const FONT_HEADER: int = 38
+const FONT_TITLE: int = 56
+const FONT_DIM: int = 26
+const TAP_HEIGHT: int = 72
+const SPIN_WIDTH: int = 220
+
 var _overlay: Node = null
 var _tab_container: TabContainer = null
 
@@ -32,6 +42,9 @@ func setup(overlay: Node) -> void:
 # ---- UI construction -------------------------------------------------------
 
 func _build_ui() -> void:
+	# Inherit body font onto every Label/Button that doesn't override it.
+	add_theme_font_size_override("font_size", FONT_BODY)
+
 	# Dim background.
 	var dim := ColorRect.new()
 	dim.color = Color(0, 0, 0, 0.65)
@@ -41,36 +54,41 @@ func _build_ui() -> void:
 
 	var panel := PanelContainer.new()
 	panel.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	panel.offset_left = 16
-	panel.offset_right = -16
-	panel.offset_top = 64
-	panel.offset_bottom = -64
+	panel.offset_left = 24
+	panel.offset_right = -24
+	panel.offset_top = 96
+	panel.offset_bottom = -96
+	panel.add_theme_font_size_override("font_size", FONT_BODY)
 	add_child(panel)
 
 	var vbox := VBoxContainer.new()
-	vbox.add_theme_constant_override("separation", 8)
+	vbox.add_theme_constant_override("separation", 16)
 	panel.add_child(vbox)
 
 	# Header row.
 	var header := HBoxContainer.new()
-	header.add_theme_constant_override("separation", 8)
+	header.add_theme_constant_override("separation", 16)
 	vbox.add_child(header)
 
 	var title := Label.new()
 	title.text = "DEBUG"
-	title.add_theme_font_size_override("font_size", 22)
+	title.add_theme_font_size_override("font_size", FONT_TITLE)
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	header.add_child(title)
 
 	var close_btn := Button.new()
 	close_btn.text = "Close"
-	close_btn.custom_minimum_size = Vector2(80, 44)
+	close_btn.custom_minimum_size = Vector2(180, TAP_HEIGHT)
+	close_btn.add_theme_font_size_override("font_size", FONT_BODY)
 	close_btn.pressed.connect(_on_close_pressed)
 	header.add_child(close_btn)
 
 	_tab_container = TabContainer.new()
 	_tab_container.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_tab_container.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	# TabContainer's tab labels read their own font_size theme key.
+	_tab_container.add_theme_font_size_override("font_size", FONT_BODY)
 	vbox.add_child(_tab_container)
 
 	_tab_container.add_child(_build_stats_tab())
@@ -87,7 +105,8 @@ func _build_ui() -> void:
 
 	var clear_btn := Button.new()
 	clear_btn.text = "Clear All Overrides"
-	clear_btn.custom_minimum_size = Vector2(0, 44)
+	clear_btn.custom_minimum_size = Vector2(0, TAP_HEIGHT)
+	clear_btn.add_theme_font_size_override("font_size", FONT_BODY)
 	clear_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	clear_btn.pressed.connect(_on_clear_overrides_pressed)
 	footer.add_child(clear_btn)
@@ -117,24 +136,21 @@ func _build_stats_tab() -> ScrollContainer:
 	var vbox := _tab_content(scroll)
 	_stats_label = Label.new()
 	_stats_label.text = "..."
+	_stats_label.add_theme_font_size_override("font_size", FONT_BODY)
 	_stats_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	vbox.add_child(_stats_label)
 
 	vbox.add_child(_section_header("Mini HUD"))
-	var hud_toggle := CheckBox.new()
-	hud_toggle.text = "Show top-right FPS"
-	hud_toggle.custom_minimum_size = Vector2(0, 44)
-	hud_toggle.button_pressed = true
+	var initial_hud: bool = true
 	if _overlay:
 		var hud_pref = _overlay.get_override("hud.mini_visible", true)
-		hud_toggle.button_pressed = (hud_pref == true or hud_pref == null)
-	hud_toggle.toggled.connect(func(state: bool) -> void:
+		initial_hud = (hud_pref == true or hud_pref == null)
+	_add_check(vbox, "Show top-right FPS", initial_hud, func(state: bool) -> void:
 		if _overlay:
 			_overlay.set_override("hud.mini_visible", state)
 			if _overlay.has_method("set_mini_hud_visible"):
 				_overlay.call("set_mini_hud_visible", state)
 	)
-	vbox.add_child(hud_toggle)
 	return scroll
 
 
@@ -185,6 +201,7 @@ func _build_board_tab() -> ScrollContainer:
 				cascade_value = consts["MAX_CASCADE_DEPTH"]
 	var c_label := Label.new()
 	c_label.text = "DIAGONAL_MIN_LENGTH = %s\nMAX_CASCADE_DEPTH = %s" % [str(diag_value), str(cascade_value)]
+	c_label.add_theme_font_size_override("font_size", FONT_BODY)
 	vbox.add_child(c_label)
 
 	vbox.add_child(_section_header("Actions"))
@@ -236,9 +253,6 @@ func _build_haptics_tab() -> ScrollContainer:
 		vbox.add_child(_dim_label("Haptics autoload not present"))
 		return scroll
 
-	var toggle := CheckBox.new()
-	toggle.text = "Enabled"
-	toggle.custom_minimum_size = Vector2(0, 44)
 	# Best-effort feature detect.
 	var enabled: bool = true
 	if "enabled" in haptics:
@@ -250,14 +264,12 @@ func _build_haptics_tab() -> ScrollContainer:
 	elif haptics.has_method("enabled"):
 		var v_enabled = haptics.call("enabled")
 		enabled = (v_enabled == true)
-	toggle.button_pressed = enabled
-	toggle.toggled.connect(func(state: bool) -> void:
+	_add_check(vbox, "Enabled", enabled, func(state: bool) -> void:
 		if "enabled" in haptics:
 			haptics.set("enabled", state)
 		elif haptics.has_method("set_enabled"):
 			haptics.call("set_enabled", state)
 	)
-	vbox.add_child(toggle)
 
 	vbox.add_child(_section_header("Trigger"))
 
@@ -282,6 +294,7 @@ func _build_progression_tab() -> ScrollContainer:
 	var gs: Node = get_node_or_null("/root/GameState")
 	var info_label := Label.new()
 	info_label.text = _progression_text(gs)
+	info_label.add_theme_font_size_override("font_size", FONT_BODY)
 	info_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	vbox.add_child(info_label)
 
@@ -311,29 +324,17 @@ func _build_cheats_tab() -> ScrollContainer:
 	var scroll := _make_tab("Cheats")
 	var vbox := _tab_content(scroll)
 
-	var inv_toggle := CheckBox.new()
-	inv_toggle.text = "Invincible player"
-	inv_toggle.custom_minimum_size = Vector2(0, 44)
-	inv_toggle.button_pressed = _invincible
-	inv_toggle.toggled.connect(func(state: bool) -> void:
+	_add_check(vbox, "Invincible player", _invincible, func(state: bool) -> void:
 		_invincible = state
 		_last_player_hp = -1
 		if _overlay:
 			_overlay.set_override("cheat.invincible", state)
 	)
-	vbox.add_child(inv_toggle)
-
-	var scale_toggle := CheckBox.new()
-	scale_toggle.text = "Always-full action scale"
-	scale_toggle.custom_minimum_size = Vector2(0, 44)
-	scale_toggle.button_pressed = _always_full_scale
-	scale_toggle.toggled.connect(func(state: bool) -> void:
+	_add_check(vbox, "Always-full action scale", _always_full_scale, func(state: bool) -> void:
 		_always_full_scale = state
 		if _overlay:
 			_overlay.set_override("cheat.always_full_scale", state)
 	)
-	vbox.add_child(scale_toggle)
-
 	_add_button(vbox, "Kill enemy now", _on_kill_enemy)
 	return scroll
 
@@ -343,13 +344,14 @@ func _build_cheats_tab() -> ScrollContainer:
 func _section_header(text: String) -> Label:
 	var lbl := Label.new()
 	lbl.text = text
-	lbl.add_theme_font_size_override("font_size", 16)
+	lbl.add_theme_font_size_override("font_size", FONT_HEADER)
 	return lbl
 
 
 func _dim_label(text: String) -> Label:
 	var lbl := Label.new()
 	lbl.text = text
+	lbl.add_theme_font_size_override("font_size", FONT_DIM)
 	lbl.modulate = Color(1, 1, 1, 0.6)
 	return lbl
 
@@ -357,26 +359,41 @@ func _dim_label(text: String) -> Label:
 func _add_button(parent: Node, text: String, callback: Callable) -> Button:
 	var b := Button.new()
 	b.text = text
-	b.custom_minimum_size = Vector2(0, 44)
+	b.custom_minimum_size = Vector2(0, TAP_HEIGHT)
+	b.add_theme_font_size_override("font_size", FONT_BODY)
 	b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	b.pressed.connect(callback)
 	parent.add_child(b)
 	return b
 
 
+func _add_check(parent: Node, text: String, initial: bool, callback: Callable) -> CheckBox:
+	var c := CheckBox.new()
+	c.text = text
+	c.custom_minimum_size = Vector2(0, TAP_HEIGHT)
+	c.add_theme_font_size_override("font_size", FONT_BODY)
+	c.button_pressed = initial
+	c.toggled.connect(callback)
+	parent.add_child(c)
+	return c
+
+
 func _add_spin_row(parent: Node, label: String, override_path: String, default_value: float, min_v: float, max_v: float, step_v: float) -> void:
 	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 8)
+	row.add_theme_constant_override("separation", 12)
 	parent.add_child(row)
 	var lbl := Label.new()
 	lbl.text = label
+	lbl.add_theme_font_size_override("font_size", FONT_BODY)
 	lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	lbl.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	row.add_child(lbl)
 	var spin := SpinBox.new()
 	spin.min_value = min_v
 	spin.max_value = max_v
 	spin.step = step_v
-	spin.custom_minimum_size = Vector2(120, 44)
+	spin.custom_minimum_size = Vector2(SPIN_WIDTH, TAP_HEIGHT)
+	spin.add_theme_font_size_override("font_size", FONT_BODY)
 	var current: Variant = default_value
 	if _overlay:
 		current = _overlay.get_override(override_path, default_value)
@@ -391,18 +408,20 @@ func _add_spin_row(parent: Node, label: String, override_path: String, default_v
 
 func _add_audio_slider(parent: Node, label: String, setter: String, getter: String, audio_bus: Node) -> void:
 	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 8)
+	row.add_theme_constant_override("separation", 12)
 	parent.add_child(row)
 	var lbl := Label.new()
 	lbl.text = label
-	lbl.custom_minimum_size = Vector2(120, 0)
+	lbl.add_theme_font_size_override("font_size", FONT_BODY)
+	lbl.custom_minimum_size = Vector2(220, 0)
+	lbl.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	row.add_child(lbl)
 	var slider := HSlider.new()
 	slider.min_value = 0.0
 	slider.max_value = 1.0
 	slider.step = 0.01
 	slider.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	slider.custom_minimum_size = Vector2(0, 44)
+	slider.custom_minimum_size = Vector2(0, TAP_HEIGHT)
 	var current: float = 1.0
 	if audio_bus.has_method(getter):
 		current = float(audio_bus.call(getter))
