@@ -4,5 +4,6 @@ extends Control
 @onready var _back: Button = $Center/VBox/Back
 
 func _ready() -> void:
+	SafeArea.apply(self)
 	_retry.pressed.connect(SceneRouter.goto_battle)
 	_back.pressed.connect(SceneRouter.goto_chapter_map)

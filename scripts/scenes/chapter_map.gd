@@ -10,6 +10,7 @@ const KING_LOCKED_TEXT := "The throne is sealed. Fell the three Wardens first."
 @onready var _king_flavor: Label = $KingPanel/KingVBox/KingFlavor
 
 func _ready() -> void:
+	SafeArea.apply(self)
 	_back_button.pressed.connect(_on_back)
 	_king_button.pressed.connect(_on_king_pressed)
 	_render()

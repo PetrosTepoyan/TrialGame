@@ -35,6 +35,7 @@ const FLOAT_FONT_SIZE_BIG: int = 56
 var _shake_base: Vector2 = Vector2.ZERO
 
 func _ready() -> void:
+	SafeArea.apply(self)
 	var level: LevelResource = GameState.get_current_level()
 	_bg.color = level.background_color
 	if level.background_path != "" and ResourceLoader.exists(level.background_path):

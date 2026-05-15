@@ -22,6 +22,7 @@ var _flavor_index: int = 0
 var _rng := RandomNumberGenerator.new()
 
 func _ready() -> void:
+	SafeArea.apply(self)
 	_rng.randomize()
 	_play_button.pressed.connect(_on_play_pressed)
 	_reset_button.pressed.connect(_on_reset_pressed)

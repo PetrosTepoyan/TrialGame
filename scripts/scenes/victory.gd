@@ -5,6 +5,7 @@ extends Control
 @onready var _detail: Label = $Center/VBox/Detail
 
 func _ready() -> void:
+	SafeArea.apply(self)
 	_continue.pressed.connect(SceneRouter.goto_chapter_map)
 	_label.text = "Castle Conquered"
 	_detail.text = "%s falls. You ride to the next stronghold." % GameState.current_castle.castle_name
