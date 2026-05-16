@@ -111,9 +111,28 @@ platform :ios do
       },
     )
 
-    upload_options = { skip_waiting_for_build_processing: true }
-    upload_options[:changelog] = options[:changelog] if options[:changelog]
+    # Changelog: prefer the lane option, fall back to fastlane/changelog.txt.
+    # Edit changelog.txt before each ship to update the "What to Test" notes
+    # testers see in the TestFlight app. If the file is missing/empty, we
+    # upload without a changelog and skip waiting for build processing.
+    changelog_path = File.join(__dir__, "changelog.txt")
+    changelog = options[:changelog]
+    if (changelog.nil? || changelog.to_s.strip.empty?) && File.exist?(changelog_path)
+      file_text = File.read(changelog_path).strip
+      changelog = file_text unless file_text.empty?
+    end
+
+    upload_options = {}
     upload_options[:api_key] = api_key if api_key
+    if changelog && !changelog.to_s.strip.empty?
+      upload_options[:changelog] = changelog
+      # Apple only accepts the changelog once the build leaves "Processing".
+      # Setting skip_waiting=false makes pilot wait (typically 3–10 min) and
+      # then apply the notes; otherwise the changelog is silently dropped.
+      upload_options[:skip_waiting_for_build_processing] = false
+    else
+      upload_options[:skip_waiting_for_build_processing] = true
+    end
 
     upload_to_testflight(**upload_options)
   end
