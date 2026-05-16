@@ -80,8 +80,19 @@ platform :ios do
 
     ensure_unique_build_number(api_key: api_key) if api_key
 
-    # Godot's release export pins CODE_SIGN_STYLE=Manual; override here so
-    # xcodebuild can fetch certs/profiles automatically via -allowProvisioningUpdates.
+    # Manual signing with the App Store Connect API key flow: `fastlane cert`
+    # and `fastlane sigh` (run separately when the keychain doesn't already
+    # have an "Apple Distribution" cert and a matching profile) deposit both
+    # in the keychain / Provisioning Profiles dir. Once that's done, gym
+    # builds and exports without needing an Xcode developer-account login —
+    # which is brittle in CI / when the macOS Xcode token expires.
+    #
+    # If the cert or profile is missing, run:
+    #   fastlane cert --development false --platform ios --api_key_path …
+    #   fastlane sigh --app_identifier com.petrostepoyan.threetowers \
+    #     --development false --platform ios --api_key_path …
+    # then retry this lane.
+    profile_name = "com.petrostepoyan.threetowers AppStore"
     gym(
       project: XCODEPROJ_PATH,
       scheme: SCHEME,
@@ -90,9 +101,14 @@ platform :ios do
       # TARGETED_DEVICE_FAMILY="1,2" forces universal (iPhone + iPad) since
       # Godot 4.6's targeted_device_family=3 leaves this build setting empty,
       # which makes App Store Connect reject the bundle (90102).
-      xcargs: "-allowProvisioningUpdates CODE_SIGN_STYLE=Automatic DEVELOPMENT_TEAM=ST2UTHBX5Z CODE_SIGN_IDENTITY=\"Apple Development\" PROVISIONING_PROFILE_SPECIFIER=\"\" TARGETED_DEVICE_FAMILY=\"1,2\"",
-      export_xcargs: "-allowProvisioningUpdates",
-      export_options: { signingStyle: "automatic", teamID: "ST2UTHBX5Z" },
+      xcargs: "CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM=ST2UTHBX5Z CODE_SIGN_IDENTITY=\"Apple Distribution\" PROVISIONING_PROFILE_SPECIFIER=\"#{profile_name}\" TARGETED_DEVICE_FAMILY=\"1,2\"",
+      export_options: {
+        signingStyle: "manual",
+        teamID: "ST2UTHBX5Z",
+        provisioningProfiles: {
+          "com.petrostepoyan.threetowers" => profile_name,
+        },
+      },
     )
 
     upload_options = { skip_waiting_for_build_processing: true }
