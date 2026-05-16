@@ -11,6 +11,10 @@ signal attacked
 signal low_hp(actor: CombatActor)
 
 const LOW_HP_FRACTION: float = 0.25
+# Armor is a *partial* mitigation, not a hard damage threshold. Capping at 60%
+# means at least 40% of every raw hit always lands — so stacking armor can't
+# trivialize bosses (a 15-armor wall would otherwise eat a 14-damage swing whole).
+const MAX_ARMOR_REDUCTION_PCT: float = 0.60
 
 @export var is_player: bool = true
 @export var display_name: String = "Hero"
@@ -54,11 +58,14 @@ func take_damage(raw: int, bypass_armor: bool = false, pierce: int = 0) -> int:
 		var to_strip: int = min(armor, pierce)
 		armor -= to_strip
 		emit_signal("armor_changed", armor + inherent_armor)
-	var blocked: int = 0
 	var dmg: int = raw
-	if not bypass_armor:
+	if not bypass_armor and raw > 0:
 		var defense: int = effective_armor()
-		blocked = min(defense, dmg)
+		# Armor blocks at most MAX_ARMOR_REDUCTION_PCT of the raw hit even when
+		# the stack is huge. The remainder always lands so a heavy armor wall
+		# only softens incoming damage instead of nullifying it.
+		var max_block: int = int(float(raw) * MAX_ARMOR_REDUCTION_PCT)
+		var blocked: int = min(defense, max_block)
 		dmg -= blocked
 		if armor > 0:
 			var consumed: int = min(armor, blocked)
