@@ -86,6 +86,11 @@ func _ready() -> void:
 	_wire_item_spawner()
 	_apply_debug_overrides()
 
+func _process(_delta: float) -> void:
+	# Re-read live debug overrides each frame so the debug menu's spinboxes
+	# take effect immediately, without needing a battle restart.
+	_apply_debug_overrides()
+
 # Hand the spawner a Callable into the player's HP fraction so it can boost the
 # spawn chance as the player gets low.
 func _wire_item_spawner() -> void:
@@ -95,6 +100,13 @@ func _wire_item_spawner() -> void:
 	if spawner == null:
 		return
 	spawner.set_player_hp_provider(Callable(self, "_player_hp_fraction"))
+	# Respect the debug menu's force-spawn override so testers' toggle persists
+	# into freshly-started battles.
+	var dbg: Node = get_node_or_null("/root/DebugOverlay")
+	if dbg != null and dbg.has_method("get_override"):
+		var force_v: Variant = dbg.call("get_override", "items.force_spawn_every_refill", false)
+		if force_v == true and spawner.has_method("set_force_spawn_every_refill"):
+			spawner.set_force_spawn_every_refill(true)
 
 func _player_hp_fraction() -> float:
 	if player == null or player.max_hp <= 0:
@@ -113,9 +125,8 @@ func _on_board_item_broken(item: Resource, pos: Vector2i) -> void:
 	if _encounter_behavior != null and board_item != null:
 		_encounter_behavior.on_item_broken(board_item, pos)
 
-# Re-read live debug overrides (Phase I will wire mana/spec controls; for now
-# we still honour the existing per-tick enemy damage / interval values so a
-# tester's tuning persists across battles).
+# Re-read live debug overrides (called each frame from _process so spinbox
+# edits take effect mid-battle without restarting the scene).
 func _apply_debug_overrides() -> void:
 	var dbg: Node = get_node_or_null("/root/DebugOverlay")
 	if dbg == null or not dbg.has_method("get_override"):
@@ -127,11 +138,32 @@ func _apply_debug_overrides() -> void:
 			enemy.base_damage = dmg_i
 			if enemy_auto != null:
 				enemy_auto.base_damage = dmg_i
+	# Live enemy max HP — when the spinbox changes, resize max_hp and clamp
+	# current_hp so the HP bar reflects the new ceiling immediately.
+	var ehp_v: Variant = dbg.call("get_override", "combat.enemy_max_hp_live", null)
+	if ehp_v != null and enemy != null:
+		var ehp_i: int = int(ehp_v)
+		if ehp_i >= 1 and enemy.max_hp != ehp_i:
+			enemy.max_hp = ehp_i
+			if enemy.current_hp > ehp_i:
+				enemy.current_hp = ehp_i
+			enemy.emit_signal("hp_changed", enemy.current_hp, enemy.max_hp)
+	# Live player auto-attack damage.
+	var pdmg_v: Variant = dbg.call("get_override", "combat.player_auto_damage", null)
+	if pdmg_v != null and player != null:
+		var pdmg_i: int = int(pdmg_v)
+		if pdmg_i >= 0:
+			player.base_damage = pdmg_i
+			if player_auto != null:
+				player_auto.base_damage = pdmg_i
 
 func _apply_level_stats() -> void:
 	player.is_player = true
 	player.display_name = "Hero"
-	player.setup(GameState.player_max_hp, 6, 0)
+	# Auto-attack damage = 6 base + run-upgrade bonus; match damage is owned by
+	# PieceType.level_values so this only affects the player_auto loop.
+	var player_dmg: int = 6 + GameState.player_base_damage_bonus
+	player.setup(GameState.player_max_hp, player_dmg, GameState.player_max_armor)
 	enemy.is_player = false
 	enemy.display_name = level.enemy_name
 	var enemy_armor: int = 0

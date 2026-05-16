@@ -6,14 +6,17 @@ extends Node
 # set_forced_weights() — those are id→weight pairs that supersede each
 # BoardItem.spawn_weight when present.
 
-const BASE_SPAWN_CHANCE_PER_REFILL: float = 0.04
-const FORCED_SPAWN_FLOOR_SECONDS: float = 30.0
+const BASE_SPAWN_CHANCE_PER_REFILL: float = 0.18
+const FORCED_SPAWN_FLOOR_SECONDS: float = 15.0
 
 var _items_pool: Array[BoardItem] = []
 var _forced_item_weights: Dictionary = {}   # encounter-controlled override
 var _last_spawn_time: float = 0.0
 var _rng := RandomNumberGenerator.new()
 var _player_hp_provider: Callable = Callable()
+# Debug knob: when true, every refill spawns an item (subject to the board's
+# MAX_ITEMS_ON_BOARD cap). Toggled from the Items debug tab.
+var _force_spawn_every_refill: bool = false
 
 func _ready() -> void:
 	_rng.randomize()
@@ -49,13 +52,17 @@ func should_spawn_item() -> BoardItem:
 	var elapsed: float = now - _last_spawn_time
 	var pressure: float = _hp_pressure_multiplier()
 	var chance: float = BASE_SPAWN_CHANCE_PER_REFILL * pressure
-	var force: bool = elapsed >= FORCED_SPAWN_FLOOR_SECONDS
+	var force: bool = _force_spawn_every_refill or elapsed >= FORCED_SPAWN_FLOOR_SECONDS
 	if force or _rng.randf() < chance:
 		var picked: BoardItem = _weighted_pick()
 		if picked != null:
 			_last_spawn_time = now
 			return picked
 	return null
+
+# Debug-menu toggle: force every refill to spawn an item until cleared.
+func set_force_spawn_every_refill(state: bool) -> void:
+	_force_spawn_every_refill = state
 
 func _hp_pressure_multiplier() -> float:
 	if _player_hp_provider.is_null():

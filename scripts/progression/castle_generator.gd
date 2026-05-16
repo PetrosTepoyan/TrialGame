@@ -24,8 +24,10 @@ const CHAPTER_THEMES := ["forest", "wall", "keep"]
 # Phase E extended the curve from 5 entries → 10 to span a full checkpoint block.
 const LEVEL_HP_CURVE: Array[float] = [0.70, 0.75, 0.85, 0.90, 1.00, 1.05, 1.15, 1.20, 1.30, 1.40]
 const LEVEL_DMG_CURVE: Array[float] = [0.60, 0.70, 0.80, 0.90, 1.00, 1.10, 1.20, 1.30, 1.40, 1.50]
-# Chapter baseline HP/dmg before per-level curve. Chapter 0 is the gentlest.
-const CHAPTER_BASE_HP: Array[float] = [60.0, 110.0, 200.0]
+# Chapter baseline HP/dmg before per-level curve. Chapter 0 is the gentlest,
+# but the prior 60 HP made level-1 fights end in a few seconds — bumped so the
+# opening fights teach mechanics rather than vanish on first match.
+const CHAPTER_BASE_HP: Array[float] = [140.0, 220.0, 320.0]
 const CHAPTER_BASE_DMG: Array[float] = [5.0, 8.5, 11.5]
 # Tower boss (5th / final checkpoint of each chapter): per-chapter HP/dmg.
 const TOWER_HP_BY_CHAPTER: Array[float] = [380.0, 560.0, 800.0]

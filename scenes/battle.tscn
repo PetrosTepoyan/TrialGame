@@ -1,4 +1,4 @@
-[gd_scene load_steps=15 format=3]
+[gd_scene load_steps=14 format=3]
 
 [ext_resource type="Script" path="res://scripts/scenes/battle.gd" id="1_battle"]
 [ext_resource type="Script" path="res://scripts/board/board.gd" id="2_board"]
@@ -8,7 +8,6 @@
 [ext_resource type="Script" path="res://scripts/ui/hp_bar.gd" id="6_hpbar"]
 [ext_resource type="Script" path="res://scripts/ui/battle_actor.gd" id="7_bactor"]
 [ext_resource type="Script" path="res://scripts/ui/status_strip.gd" id="9_status"]
-[ext_resource type="PackedScene" path="res://scenes/ui/tutorial_overlay.tscn" id="10_tut"]
 [ext_resource type="PackedScene" path="res://scenes/ui/settings_panel.tscn" id="11_set"]
 [ext_resource type="Theme" path="res://assets/theme/three_towers.tres" id="12_theme"]
 [ext_resource type="Script" path="res://scripts/ui/mana_bar.gd" id="13_manabar"]
@@ -258,16 +257,6 @@ offset_right = 160.0
 offset_bottom = -16.0
 script = ExtResource("13_manabar")
 
-[node name="SpecialAttackButton" type="Button" parent="ManaPanel"]
-anchor_right = 1.0
-anchor_top = 0.0
-anchor_bottom = 1.0
-offset_left = -240.0
-offset_top = 80.0
-offset_right = -36.0
-offset_bottom = -80.0
-script = ExtResource("14_specbtn")
-
 [node name="Actors" type="Node" parent="."]
 
 [node name="PlayerActor" type="Node" parent="Actors"]
@@ -292,7 +281,17 @@ enemy_actor_path = NodePath("../Actors/EnemyActor")
 
 [node name="FloatingTextRoot" type="Node2D" parent="."]
 
-[node name="TutorialOverlay" parent="." instance=ExtResource("10_tut")]
-
 [node name="SettingsPanel" parent="." instance=ExtResource("11_set")]
 visible = false
+
+[node name="SpecialAttackButton" type="Button" parent="."]
+z_index = 5
+anchor_left = 0.5
+anchor_right = 0.5
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_left = -110.0
+offset_top = -240.0
+offset_right = 110.0
+offset_bottom = -20.0
+script = ExtResource("14_specbtn")

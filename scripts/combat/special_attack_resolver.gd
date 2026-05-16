@@ -26,8 +26,20 @@ static func resolve(spec: SpecialAttack, _caster: CombatActor, _target: CombatAc
 	# the resolver is the single source of truth.
 	if status == null and spec.level == 3:
 		status = StatusEffect.new(StatusEffect.Kind.BLEED, 8.0, 2, 0)
+	# Debug override: tester can dial spec damage per tier from the debug menu.
+	var damage: int = spec.base_damage
+	var tree: SceneTree = Engine.get_main_loop() as SceneTree
+	if tree != null:
+		var dbg: Node = tree.root.get_node_or_null("DebugOverlay")
+		if dbg != null and dbg.has_method("get_override"):
+			var key: String = "combat.spec_damage_l%d" % spec.level
+			var ov_v: Variant = dbg.call("get_override", key, null)
+			if ov_v != null:
+				var ov_i: int = int(ov_v)
+				if ov_i >= 0:
+					damage = ov_i
 	return {
-		"damage": spec.base_damage,
+		"damage": damage,
 		"status": status,
 		"animation_id": spec.animation_id,
 		"bypass_armor": spec.bypass_armor,

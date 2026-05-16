@@ -13,6 +13,9 @@ const FADE_TIME: float = 0.25
 var _fader: ColorRect = null
 
 func _ready() -> void:
+	# Run regardless of pause so a paused scene (e.g. settings panel up during a
+	# transition) can never strand the fader at full-black opacity.
+	process_mode = Node.PROCESS_MODE_ALWAYS
 	# Create an overlay rect that lives above all scenes for crossfades.
 	var canvas := CanvasLayer.new()
 	canvas.name = "FaderLayer"
@@ -22,6 +25,7 @@ func _ready() -> void:
 	_fader.color = Color(0, 0, 0, 0)
 	_fader.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_fader.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_fader.process_mode = Node.PROCESS_MODE_ALWAYS
 	canvas.add_child(_fader)
 
 func goto(path: String) -> void:

@@ -19,10 +19,9 @@ extends Control
 @onready var _exit_button: Button = $TopBar/ExitButton
 @onready var _floating_text_root: Node2D = $FloatingTextRoot
 @onready var _mana_bar: ManaBar = $ManaPanel/ManaBar
-@onready var _spec_button: SpecialAttackButton = $ManaPanel/SpecialAttackButton
+@onready var _spec_button: SpecialAttackButton = $SpecialAttackButton
 @onready var _battle_scene: Node2D = $BattleScene
 @onready var _board_area: Control = $BoardArea
-@onready var _tutorial: TutorialOverlay = $TutorialOverlay
 @onready var _settings_panel: SettingsPanel = $SettingsPanel
 
 # Track elapsed battle time so we can award stars (Phase E balance).
@@ -109,7 +108,6 @@ func _ready() -> void:
 	_pause_button.pressed.connect(_on_pause)
 	_exit_button.pressed.connect(_on_exit_pressed)
 	_spec_button.pressed.connect(_on_spec_button_pressed)
-	_tutorial.show_once()
 	# Mana bar driven by ManaSystem charge level.
 	if _combat.mana_system != null:
 		_combat.mana_system.charge_level_changed.connect(_on_charge_level_changed)

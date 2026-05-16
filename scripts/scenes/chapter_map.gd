@@ -178,37 +178,57 @@ func _build_block_rail(
 	if future_block or not chapter_unlocked:
 		return _build_locked_rail_stub(block_idx)
 
-	var rail := HBoxContainer.new()
-	rail.add_theme_constant_override("separation", 8)
-	rail.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	rail.alignment = BoxContainer.ALIGNMENT_CENTER
+	# Wrap the 10 regular medallions + 1 checkpoint into a two-row VBox so the
+	# checkpoint (boss) medallion always has visible real estate even on the
+	# narrowest 1080-wide layout. The chapter card's right column is ~794px;
+	# 10 × 72 + 9 × 8 + 50px label ≈ 842px, which already wraps past the edge
+	# before we add the checkpoint. Splitting the row avoids the clip.
+	var wrap := VBoxContainer.new()
+	wrap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	wrap.add_theme_constant_override("separation", 8)
 
-	# Block label on the left.
+	var top_row := HBoxContainer.new()
+	top_row.add_theme_constant_override("separation", 6)
+	top_row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	top_row.alignment = BoxContainer.ALIGNMENT_CENTER
+
+	# Block label on the left of the top row.
 	var block_label := Label.new()
 	block_label.text = "B%d" % (block_idx + 1)
 	block_label.custom_minimum_size = Vector2(50, 0)
 	block_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	block_label.add_theme_font_size_override("font_size", 26)
 	block_label.add_theme_color_override("font_color", _C_GOLD if (current_block or cleared_block) else _C_LOCKED)
-	rail.add_child(block_label)
+	top_row.add_child(block_label)
 
-	# Build 10 regular medallions + 1 checkpoint boss medallion.
-	# Cleared block: all 11 entries unlocked (replay).
-	# Current block: only up to current_level_in_block.
-	# GameState.LEVELS_PER_BLOCK already = 11 (10 regular + checkpoint).
+	var checkpoint_cell: Control = null
+	# Build 10 regular medallions on the top row; the 11th (checkpoint boss)
+	# drops onto its own centered row below so it can't be clipped off-screen.
 	for in_block in range(GameState.LEVELS_PER_BLOCK):
 		var flat: int = block_idx * GameState.LEVELS_PER_BLOCK + in_block
 		if flat >= chapter.levels.size():
 			break
 		var lvl: LevelResource = chapter.levels[flat]
 		var cell := _build_level_cell(ch_idx, block_idx, in_block, lvl, cleared_block, current_block)
-		rail.add_child(cell)
+		if in_block == GameState.CHECKPOINT_LEVEL_INDEX:
+			checkpoint_cell = cell
+		else:
+			top_row.add_child(cell)
+
+	wrap.add_child(top_row)
+
+	if checkpoint_cell != null:
+		var boss_row := HBoxContainer.new()
+		boss_row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		boss_row.alignment = BoxContainer.ALIGNMENT_CENTER
+		boss_row.add_child(checkpoint_cell)
+		wrap.add_child(boss_row)
 
 	# Replay-only rail: dim the whole thing so it visually recedes.
 	if cleared_block and not current_block:
-		rail.modulate = Color(1, 1, 1, 0.65)
+		wrap.modulate = Color(1, 1, 1, 0.65)
 
-	return rail
+	return wrap
 
 func _build_locked_rail_stub(block_idx: int) -> Control:
 	var stub := PanelContainer.new()
@@ -294,21 +314,22 @@ func _build_level_cell(
 
 func _build_level_button(ch_idx: int, block_idx: int, in_block: int, lvl: LevelResource) -> Button:
 	var btn := Button.new()
-	# Smaller medallions than v1 (10 fit on screen vs 5). Checkpoint medallion
-	# stays slightly larger and uses the boss glyph.
+	# Regular medallions shrunk to 60×60 so all 10 fit on one row inside the
+	# chapter card without horizontal clipping. The checkpoint stays larger and
+	# lives on its own row underneath (see _build_block_rail).
 	var is_checkpoint: bool = lvl.is_checkpoint or lvl.is_boss
-	var size: Vector2 = Vector2(72, 72)
+	var size: Vector2 = Vector2(60, 60)
 	if is_checkpoint:
-		size = Vector2(90, 72)
+		size = Vector2(140, 84)
 	btn.custom_minimum_size = size
 
 	var label: String
 	if is_checkpoint:
-		label = "⚔"
-		btn.add_theme_font_size_override("font_size", 38)
+		label = "⚔  Boss"
+		btn.add_theme_font_size_override("font_size", 36)
 	else:
 		label = "%d" % (in_block + 1)
-		btn.add_theme_font_size_override("font_size", 32)
+		btn.add_theme_font_size_override("font_size", 28)
 	btn.text = label
 
 	# Per-state stylebox — medallions get their own look.

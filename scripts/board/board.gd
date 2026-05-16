@@ -90,6 +90,27 @@ func _ready() -> void:
 func get_item_spawner() -> ItemSpawner:
 	return _item_spawner
 
+
+# Debug-only: replace the piece at `pos` with an ItemPiece carrying `item_res`.
+# Called from the debug menu so testers can guarantee an item appears even when
+# the spawn probability would normally refuse.
+func debug_force_spawn_item_at(pos: Vector2i, item_res: BoardItem) -> void:
+	if not is_in_bounds(pos) or item_res == null:
+		return
+	if _items_on_board.size() >= MAX_ITEMS_ON_BOARD:
+		return
+	var existing: Piece = grid[pos.y][pos.x]
+	if existing != null:
+		existing.queue_free()
+		grid[pos.y][pos.x] = null
+	var ip: ItemPiece = ItemPiece.new()
+	ip.board_pos = pos
+	ip.position = board_pos_to_world(pos)
+	_piece_layer.add_child(ip)
+	ip.configure_item(item_res)
+	_items_on_board.append(ip)
+	grid[pos.y][pos.x] = ip
+
 func _default_piece_types() -> Array[PieceType]:
 	# Fallback when designer hasn't wired .tres files in the editor. Values
 	# track the new spec:

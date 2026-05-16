@@ -37,6 +37,9 @@ var _mana_spin_syncing: bool = false
 
 # Sliders we need to read out for overrides.
 var _slider_paths: Dictionary = {}  # Slider/SpinBox -> override path
+# SpinBox -> default value, used by "Reset all to defaults" so the rows snap
+# back to the value they showed on first build.
+var _slider_defaults: Dictionary = {}
 
 
 func _ready() -> void:
@@ -173,18 +176,24 @@ func _build_combat_tab() -> ScrollContainer:
 	var vbox := _tab_content(scroll)
 
 	vbox.add_child(_section_header("Live (applies mid-battle)"))
-	# CombatController re-reads these in its debug-override pump.
+	# CombatController re-reads these every frame in its debug-override pump.
 	_add_spin_row(vbox, "Enemy damage", "combat.enemy_damage", 6, 0, 999, 1)
+	_add_spin_row(vbox, "Enemy max HP (live)", "combat.enemy_max_hp_live", 60, 1, 9999, 1)
+	_add_spin_row(vbox, "Player auto-attack damage", "combat.player_auto_damage", 6, 0, 999, 1)
+	_add_spin_row(vbox, "Spec L1 damage", "combat.spec_damage_l1", 8, 0, 999, 1)
+	_add_spin_row(vbox, "Spec L2 damage", "combat.spec_damage_l2", 30, 0, 999, 1)
+	_add_spin_row(vbox, "Spec L3 damage", "combat.spec_damage_l3", 42, 0, 999, 1)
 
 	vbox.add_child(_section_header("Stored (next battle)"))
 	_add_spin_row(vbox, "Player max HP", "combat.player_max_hp", 100, 1, 9999, 1)
-	_add_spin_row(vbox, "Enemy max HP", "combat.enemy_max_hp", 60, 1, 9999, 1)
+	_add_spin_row(vbox, "Enemy max HP (next)", "combat.enemy_max_hp", 60, 1, 9999, 1)
 
 	vbox.add_child(_section_header("Quick Actions"))
 
 	_add_button(vbox, "Heal player to full", _on_heal_player)
 	_add_button(vbox, "Kill enemy", _on_kill_enemy)
 	_add_button(vbox, "Stun enemy 99s", _on_stun_enemy)
+	_add_button(vbox, "Reset all to defaults", _on_reset_defaults)
 
 	vbox.add_child(_section_header("Mana / Spec"))
 
@@ -258,11 +267,50 @@ func _build_items_tab() -> ScrollContainer:
 		_add_button(vbox, label, func() -> void: _on_trigger_item(fname))
 
 	vbox.add_child(_section_header("Spawn"))
-	# "Force item spawn every refill" was deferred: ItemSpawner has no public
-	# knob (chance is a const) and we can't edit item_spawner.gd in this scope.
-	vbox.add_child(_dim_label("Force item spawn every refill: deferred (ItemSpawner mutation out of scope)."))
+	var force_initial: bool = false
+	if _overlay:
+		var ov = _overlay.get_override("items.force_spawn_every_refill", false)
+		force_initial = (ov == true)
+	_add_check(vbox, "Force item spawn every refill", force_initial, func(state: bool) -> void:
+		if _overlay:
+			_overlay.set_override("items.force_spawn_every_refill", state)
+		_apply_force_spawn_to_board(state)
+	)
+	_add_button(vbox, "Spawn item now (top row)", _on_spawn_item_now)
 
 	return scroll
+
+
+func _apply_force_spawn_to_board(state: bool) -> void:
+	var board: Node = _find_board()
+	if board == null or not board.has_method("get_item_spawner"):
+		return
+	var spawner: Node = board.call("get_item_spawner")
+	if spawner != null and spawner.has_method("set_force_spawn_every_refill"):
+		spawner.call("set_force_spawn_every_refill", state)
+
+
+# Drop a random item into the top-left cell immediately. Bypasses the spawner's
+# probability gate so testers can see item behaviour without grinding refills.
+func _on_spawn_item_now() -> void:
+	var board: Node = _find_board()
+	if board == null:
+		return
+	var spawner: Node = null
+	if board.has_method("get_item_spawner"):
+		spawner = board.call("get_item_spawner")
+	if spawner == null:
+		return
+	# Pull any item from the pool; spawner._items_pool is private so we read it
+	# via property access (Godot exposes script vars by name).
+	var pool_v: Variant = spawner.get("_items_pool")
+	if not (pool_v is Array) or (pool_v as Array).is_empty():
+		push_warning("Debug: item pool empty")
+		return
+	var pool: Array = pool_v
+	var item: BoardItem = pool[randi() % pool.size()]
+	if board.has_method("debug_force_spawn_item_at"):
+		board.call("debug_force_spawn_item_at", Vector2i(0, 0), item)
 
 
 # ---- Board tab -------------------------------------------------------------
@@ -497,6 +545,7 @@ func _add_spin_row(parent: Node, label: String, override_path: String, default_v
 	)
 	row.add_child(spin)
 	_slider_paths[spin] = override_path
+	_slider_defaults[spin] = default_value
 
 
 func _add_audio_slider(parent: Node, label: String, setter: String, getter: String, audio_bus: Node) -> void:
@@ -726,6 +775,37 @@ func _on_close_pressed() -> void:
 func _on_clear_overrides_pressed() -> void:
 	if _overlay:
 		_overlay.clear_overrides()
+	_reset_spinboxes_to_defaults()
+
+
+# Wipe overrides AND restore live cheat state (infinite mana, zero auto-damage)
+# back to off. Used by the "Reset all to defaults" button so a tester can undo
+# every tweak with a single tap.
+func _on_reset_defaults() -> void:
+	if _overlay:
+		_overlay.clear_overrides()
+	# Restore actor base damage if the zero-auto-damage cheat was active.
+	if _zero_auto_dmg:
+		_set_zero_auto_damage(false)
+	_infinite_mana = false
+	_invincible = false
+	_last_player_hp = -1
+	# Heal player to full so the reset feels like a clean slate.
+	_on_heal_player()
+	_reset_spinboxes_to_defaults()
+
+
+func _reset_spinboxes_to_defaults() -> void:
+	# Snap every spinbox back to the value it shipped with. We block re-emission
+	# of set_override here so the spin's value_changed callback doesn't write
+	# the default back into the overrides dict we just cleared.
+	for spin_v in _slider_defaults.keys():
+		var spin: SpinBox = spin_v
+		if spin == null or not is_instance_valid(spin):
+			continue
+		spin.set_block_signals(true)
+		spin.value = float(_slider_defaults[spin])
+		spin.set_block_signals(false)
 
 
 func _on_heal_player() -> void:
@@ -1016,6 +1096,11 @@ func _on_jump_to_checkpoint(chapter: int, block: int) -> void:
 		gs.call("set_current_pointer", chapter, block, 10)
 	elif "level_index" in gs:
 		gs.set("level_index", block * 11 + 10)
+	# Re-derive player stats from accumulated run upgrades so the tester walks
+	# into the boss with the same HP / armor / damage they'd have through
+	# normal progression. Without this, debug jumps land on a base-stats hero.
+	if gs.has_method("_reapply_run_upgrades_to_stats"):
+		gs.call("_reapply_run_upgrades_to_stats")
 	if _overlay:
 		_overlay.close_menu()
 	if router.has_method("goto_battle"):
